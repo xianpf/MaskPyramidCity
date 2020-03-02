@@ -5,7 +5,7 @@ from PIL import Image
 import torch
 from torch.utils import data
 from torchvision import transforms
-from dataloaders import custom_transforms as tr
+from dataloaders import city_transforms as tr
 
 class Path(object):
     @staticmethod
@@ -172,7 +172,7 @@ class CityInstanceSegm(data.Dataset):
         _tmp_cat = np.stack((_lbl, _ins), axis=-1)
         _target = Image.fromarray(_tmp_cat)
 
-        sample = {'image': _img, 'label': _target}
+        sample = {'image': _img, 'label': _lbl, 'instance': _ins}
 
         if self.split == 'train':
             transed = self.transform_tr(sample)
@@ -192,11 +192,10 @@ class CityInstanceSegm(data.Dataset):
 
         # return sample_res
 
-        target_sematic = transed['label'][..., 0]
-        if (target_sematic.unique()>= 19).sum() > 1:
-            print('ttttttttttt', target_sematic.unique())
-            import pdb; pdb.set_trace()
-
+        target_sematic = transed['label']
+        # import pdb; pdb.set_trace()
+        # print('xxxxxxxxxxxxxx', np.unique(_lbl), target_sematic.unique(), '\n', (np.unique(_lbl) == target_sematic.unique().numpy()).all())
+        
         return transed
 
 
@@ -215,14 +214,14 @@ class CityInstanceSegm(data.Dataset):
             mask[mask == _voidc] = self.ignore_index
         for _validc in self.valid_classes:
             mask[mask == _validc] = self.class_map[_validc]
-        if (np.unique(mask) >= 19).sum() > 1:
-            import pdb; pdb.set_trace()
+            
         return mask
 
     def transform_tr(self, sample):
         composed_transforms = transforms.Compose([
+            tr.ImageWraper(),
             tr.RandomHorizontalFlip(),
-            tr.RandomScaleCrop(base_size=self.base_size, crop_size=self.crop_size, fill=255),
+            tr.RandomScaleCrop(base_size=self.base_size, crop_size=self.crop_size, fill=self.ignore_index),
             tr.RandomGaussianBlur(),
             tr.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
             tr.ToTensor()])
@@ -232,6 +231,7 @@ class CityInstanceSegm(data.Dataset):
     def transform_val(self, sample):
 
         composed_transforms = transforms.Compose([
+            tr.ImageWraper(),
             tr.FixScaleCrop(crop_size=self.crop_size),
             tr.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
             tr.ToTensor()])
@@ -241,8 +241,13 @@ class CityInstanceSegm(data.Dataset):
     def transform_ts(self, sample):
 
         composed_transforms = transforms.Compose([
+            tr.ImageWraper(),
             tr.FixedResize(size=self.crop_size),
             tr.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
             tr.ToTensor()])
 
         return composed_transforms(sample)
+
+
+def cityIns_collate(data):
+    import pdb; pdb.set_trace()

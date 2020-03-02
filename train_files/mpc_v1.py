@@ -1,7 +1,8 @@
-import sys, os, time
+import sys, os, time, datetime, curses, logging
 sys.path.insert(0, os.path.abspath(__file__+'/../..'))
 import argparse, glob
 from tqdm import tqdm
+import numpy as np
 
 import torch
 from torch import nn
@@ -135,8 +136,18 @@ class MaskPyramids(nn.Module):
         self.upmix256_2 = nn.Conv2d(512+256+2, 256, 1)
         self.upmix256_s = [None, self.upmix256_5, self.upmix256_4, self.upmix256_3, self.upmix256_2]
 
+        # self.sematic_conv_5 = resnet.Bottleneck(512+256, 64, 256, 1, True, 1, 1, nn.BatchNorm2d)
+        self.sematic_conv_5 = resnet.Bottleneck(512+256, 64, 256, 1, True, 1, 1, nn.BatchNorm2d)
+        self.sematic_conv_4 = resnet.Bottleneck(512+256, 64, 256, 1, True, 1, 1, nn.BatchNorm2d)
+        self.sematic_conv_3 = resnet.Bottleneck(256+256, 64, 256, 1, True, 1, 1, nn.BatchNorm2d)
+        self.sematic_conv_2 = resnet.Bottleneck(512+256, 64, 256, 1, True, 1, 1, nn.BatchNorm2d)
+        self.sematic_conv_1 = resnet.Bottleneck(256+256, 64, 256, 1, True, 1, 1, nn.BatchNorm2d)
+        self.sematic_final = nn.Conv2d(256, num_classes, 1)
+
+
         self.cs_criteron = nn.CrossEntropyLoss()
         self.class_criteron = nn.CrossEntropyLoss()
+        self.sematic_criteron = nn.CrossEntropyLoss(ignore_index=255)
 
         self.cs_loss_factor = 1.0
         self.miss_loss_factor = 1.0
@@ -154,7 +165,7 @@ class MaskPyramids(nn.Module):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
 
-    def _init_target(self, img_tensor_shape, device, target=None):
+    def _init_target(self, img_tensor_shape, device, target=None, run_idx=0):
         target_levels = {}
         if self.cfg.DATALOADER.DATASET == "coco":
             target_ori_mask = target.get_field('masks').get_mask_tensor().unsqueeze(0).to(device)
@@ -163,19 +174,15 @@ class MaskPyramids(nn.Module):
             target_mask_pad_to_img = target_ori_mask.new(*target_shape).zero_()
             target_mask_pad_to_img[:,:,:target.size[1], :target.size[0]] = target_ori_mask
         elif self.cfg.DATALOADER.DATASET == "cityscapes":
-            target_sematic = target[..., 0]
-            ins_mask = target[..., 1]
-            target_ori_mask = torch.cat([ins_mask[None] == lbl for lbl in ins_mask.unique()])[None]
             # import pdb; pdb.set_trace()
+            target_sematic = target['label'][run_idx]
+            ins_mask = target['instance'][run_idx]
+            target_ori_mask = torch.cat([ins_mask[None] == lbl for lbl in ins_mask.unique()])[None]
             target_levels['labels'] = torch.cat([(mask.float()*target_sematic).max().view(1) \
                     for mask in target_ori_mask[0]]).long()
-            target_levels['labels'][target_levels['labels']==255]=0
-            # print('ttttttttttt', target_levels['labels'])
-            if (target_sematic.unique()>= 19).sum() > 1:
-                print('ttttttttttt', target_sematic.unique())
-                import pdb; pdb.set_trace()
-            if target_levels['labels'].max() >= 19:
-                import pdb; pdb.set_trace()
+            # if target_sematic.max()> 18:
+            #     import pdb; pdb.set_trace()
+            # target_levels['labels'][target_levels['labels']==255]=0
             target_mask_pad_to_img = target_ori_mask
         else:
             import pdb; pdb.set_trace()
@@ -196,10 +203,6 @@ class MaskPyramids(nn.Module):
         level_shape = ((level_shape[0]+1)//2, (level_shape[1]+1)//2)
         target_levels[7] = F.interpolate(target_mask_pad_to_img.float(), level_shape, mode='bilinear').type(target_mask_pad_to_img.dtype)
 
-        # import pdb; pdb.set_trace()
-        # print([t.shape for t in target_levels.values()])
-
-        # target_levels['labels'] = target.get_field('labels')
         return target_levels
    
     # 只能给新来的 pyramids match target， 旧的match 要保持连贯性
@@ -351,6 +354,24 @@ class MaskPyramids(nn.Module):
 
         return class_loss
 
+    def compute_sematic(self, feature, target):
+        up_6_5 = F.interpolate(feature[5], feature[4].shape[2:], mode='bilinear')
+        sematic_5 = self.sematic_conv_5(torch.cat((feature[4], up_6_5), dim=1))
+        up_5_4 = F.interpolate(sematic_5, feature[3].shape[2:], mode='bilinear')
+        sematic_4 = self.sematic_conv_4(torch.cat((feature[3], up_5_4), dim=1))
+        up_4_3 = F.interpolate(sematic_4, feature[2].shape[2:], mode='bilinear')
+        sematic_3 = self.sematic_conv_3(torch.cat((feature[2], up_4_3), dim=1))
+        up_3_2 = F.interpolate(sematic_3, feature[1].shape[2:], mode='bilinear')
+        sematic_2 = self.sematic_conv_2(torch.cat((feature[1], up_3_2), dim=1))
+        up_2_1 = F.interpolate(sematic_2, feature[0].shape[2:], mode='bilinear')
+        sematic_1 = self.sematic_conv_1(torch.cat((feature[0], up_2_1), dim=1))
+        up_final = F.interpolate(sematic_1, self.cfg.DATALOADER.CROP_SIZE, mode='bilinear')
+        final = self.sematic_final(up_final)
+
+        sematic_loss = self.sematic_criteron(final, target['label'].long())
+
+        return sematic_loss, final
+
     def forward_singel_level(self, curr_level, inst_pyramids, x_curr, i, level_sizes, 
         target_support_pyramids, target_levels, losses_i):
         new_pos_limit = [100, 50, 50, 50, 50, 50, 50]
@@ -404,20 +425,21 @@ class MaskPyramids(nn.Module):
         # merit_pyramids_idx = new_masks_softmax.topk(3, dim=1)[1].unique()
         merit_pyramids = [inst_pyramids[i] for i in range(len(inst_pyramids)) if i in merit_pyramids_idx]
 
-        target_len_before = sum([len(l) for l in target_support_pyramids])
-        # target_len_1_before = sum([len(l) for l in target_support_pyramids_0])
-        # import pdb; pdb.set_trace()
-        for reduce_i in range(len(inst_pyramids)):
-            if reduce_i not in merit_pyramids_idx:
-                die_id = inst_pyramids[reduce_i].idx
-                die_target_idx = inst_pyramids[reduce_i].target_idx
-                if die_target_idx:
-                    target_support_pyramids[die_target_idx].remove(die_id)
-                    # target_support_pyramids_0[die_target_idx].remove(die_id)
-        target_len_after = sum([len(l) for l in target_support_pyramids])
-        # target_len_1_after = sum([len(l) for l in target_support_pyramids_0])
-        # if target_len_1_before != target_len_1_after:
-        #     import pdb; pdb.set_trace()
+        if self.training:
+            target_len_before = sum([len(l) for l in target_support_pyramids])
+            # target_len_1_before = sum([len(l) for l in target_support_pyramids_0])
+            # import pdb; pdb.set_trace()
+            for reduce_i in range(len(inst_pyramids)):
+                if reduce_i not in merit_pyramids_idx:
+                    die_id = inst_pyramids[reduce_i].idx
+                    die_target_idx = inst_pyramids[reduce_i].target_idx
+                    if die_target_idx:
+                        target_support_pyramids[die_target_idx].remove(die_id)
+                        # target_support_pyramids_0[die_target_idx].remove(die_id)
+            target_len_after = sum([len(l) for l in target_support_pyramids])
+            # target_len_1_after = sum([len(l) for l in target_support_pyramids_0])
+            # if target_len_1_before != target_len_1_after:
+            #     import pdb; pdb.set_trace()
 
         # import pdb; pdb.set_trace()
         inst_pyramids = merit_pyramids + new_pyramids
@@ -456,7 +478,8 @@ class MaskPyramids(nn.Module):
             self.log_dict.update({'pyr_num_l0': len(inst_pyramids)})
             target_levels = None
             if self.training:
-                target_levels = self._init_target((img_size_h, img_size_w ), device, targets[i])
+                # target_levels = self._init_target((img_size_h, img_size_w ), device, targets[i])
+                target_levels = self._init_target((img_size_h, img_size_w ), device, targets, i)
                 target_support_pyramids = [[] for k in range(target_levels[7].shape[1])]
                 # 统计 target 匹配
                 self.match_target(0, inst_pyramids, target_levels, target_support_pyramids)
@@ -474,23 +497,37 @@ class MaskPyramids(nn.Module):
                     target_support_pyramids, target_levels, losses_3)
 
             # import pdb; pdb.set_trace()
-            class_loss = self.compute_class(inst_pyramids, target_levels)
-            losses_class.append(class_loss)
+            # class_loss = self.compute_class(inst_pyramids, target_levels)
+
+
+            # losses_class.append(class_loss)
 
             if not self.training:
                 test_masks.append(inst_pyramids)
 
+        sematic_loss, sematic_out = self.compute_sematic(xs_r50, targets)
             
         self.log_dict.update({'InstPyr_inst_count': InstancePyramid.inst_count})
         # import pdb; pdb.set_trace()
-        losses['class_loss']= sum(loss for loss in losses_class)
+        losses['class_loss']= sematic_loss
+        # losses['class_loss']= sum(loss for loss in losses_class)
         losses['level_0']= sum(loss for loss in losses_0)
         losses['level_1']= sum(loss for loss in losses_1)
         losses['level_2']= sum(loss for loss in losses_2)
         losses['level_3']= sum(loss for loss in losses_3)
         # losses['level_4']= sum(loss for loss in losses_4)
 
-        return losses if self.training else test_masks
+        if self.training:
+            return losses
+        else:
+            output = dict()
+            # import pdb; pdb.set_trace()
+            for pyrs in test_masks:
+                masks = torch.cat([pyr.get_mask(3) for pyr in pyrs])
+            # test_masks[0]
+            output['sematic_out'] = sematic_out
+
+            return output
 
 
 class InstancePyramid():
@@ -549,7 +586,8 @@ class InstancePyramid():
     def init_gaussian_masks(self):
         xs = torch.arange(7*4)
         ys = torch.arange(7*4).view(-1,1)
-        ln2 = torch.Tensor(2.0, requires_grad=False).log()
+        # ln2 = torch.tensor(2.0, requires_grad=False).log()
+        ln2 = torch.Tensor([2.0]).log()[0]
         gaussian_mask_28 = (-ln2*((xs.float()-7*2+1)**2+(ys.float()-7*2+1)**2)/7**2).exp()
 
         init_gaussian_mask = torch.zeros(self.level_sizes[self.init_level])
@@ -572,6 +610,7 @@ class InstancePyramid():
 class Trainer(object):
     def __init__(self, cfg, output_dir):
         self.cfg = cfg
+        self.logger = logging.getLogger("MaskPyramid")
         self.tbSummary = TensorboardSummary(output_dir)
         self.writer = self.tbSummary.create_summary()
         self.model = MaskPyramids(cfg)
@@ -591,6 +630,8 @@ class Trainer(object):
         self.model.to(self.device)
         self.start_epoch = 0
         self.best_pred = 0.0
+        self.meters = {'start_time': time.time(),
+            'total_iters': cfg.SOLVER.EPOCHES*len(self.train_loader)}
         
     def load_weights(self, path=None, subdict='model'):
         weights = torch.load(path if path else self.cfg.MODEL.WEIGHT)
@@ -599,13 +640,15 @@ class Trainer(object):
         self.model.load_state_dict(weights)
 
     def training(self, epoch):
+        train_loss = 0.0
         self.model.train()
-        start_training_time = time.time()
         end = time.time()
-        tbar = tqdm(self.train_loader)
-        for i, sample in enumerate(tbar):
+        # tbar = tqdm(self.train_loader)
+        # for i, sample in enumerate(tbar):
+        for i, sample in enumerate(self.train_loader):
             image = sample['image'].to(self.device)
-            target = sample['label'].to(self.device)
+            target = {'label': sample['label'].to(self.device),
+                    'instance': sample['instance'].to(self.device)}
             self.scheduler(self.optimizer, i, epoch, self.best_pred)
             self.optimizer.zero_grad()
             loss_dict = self.model(image, target)
@@ -616,15 +659,58 @@ class Trainer(object):
             batch_time = time.time() - end
             end = time.time()
             self.model.log_dict['loss_dict'] = loss_dict
+            train_loss += losses.item()
 
-
-        import pdb; pdb.set_trace()
-
-
-
+            if i % 20 == 0 or i == len(self.train_loader) -1:
+                curr_iter = epoch*len(self.train_loader)+ i + 1
+                sepent_time = time.time() - self.meters['start_time']
+                eta_seconds = sepent_time * self.meters['total_iters'] / curr_iter - sepent_time
+                eta_string = str(datetime.timedelta(seconds=int(eta_seconds)))
+                self.logger.info(('Ep:{}/{}|Iter:{}/{}|Eta:{}|Loss:{:2.4}|Class:{:2.4}|'+\
+                    'L0:{:2.4}|L1:{:2.4}|L2:{:2.4}|L3:{:2.4}|PyrNum:{}|#pyr0:{}|'+\
+                    '#pyr1:{}|#pyr2:{}|#pyr3:{}|').format(
+                    epoch, self.cfg.SOLVER.EPOCHES, i, len(self.train_loader),
+                    eta_string, losses.item(), loss_dict['class_loss'].item(), loss_dict['level_0'].item(),
+                    loss_dict['level_1'].item(), loss_dict['level_2'].item(), loss_dict['level_3'].item(),
+                    self.model.log_dict['InstPyr_inst_count'], self.model.log_dict['pyr_num_l0'], 
+                    self.model.log_dict['pyr_num_l1'], self.model.log_dict['pyr_num_l2'], 
+                    self.model.log_dict['pyr_num_l3'], 
+                ))
+        self.writer.add_scalar('train/loss_epoch', train_loss, epoch)
 
     def validation(self, epoch):
         self.model.eval()
+        self.evaluator.reset()
+        test_loss = 0.0
+        tbar = tqdm(self.val_loader, desc='\r')
+        for i, sample in enumerate(tbar):
+            image = sample['image'].to(self.device)
+            target = {'label': sample['label'].to(self.device),
+                    'instance': sample['instance'].to(self.device)}
+            with torch.no_grad():
+                output = self.model(image, target)
+            # import pdb; pdb.set_trace()
+            sematic_out = output['sematic_out']
+            pred = sematic_out.data.cpu().numpy()
+            target = sample['label'].numpy()
+            pred = np.argmax(pred, axis=1)
+            # Add batch sample into evaluator
+            self.evaluator.add_batch(target, pred)
+
+        # Fast test during the training
+        Acc = self.evaluator.Pixel_Accuracy()
+        Acc_class = self.evaluator.Pixel_Accuracy_Class()
+        mIoU = self.evaluator.Mean_Intersection_over_Union()
+        FWIoU = self.evaluator.Frequency_Weighted_Intersection_over_Union()
+        self.writer.add_scalar('val/total_loss_epoch', test_loss, epoch)
+        self.writer.add_scalar('val/mIoU', mIoU, epoch)
+        self.writer.add_scalar('val/Acc', Acc, epoch)
+        self.writer.add_scalar('val/Acc_class', Acc_class, epoch)
+        self.writer.add_scalar('val/fwIoU', FWIoU, epoch)
+
+        self.logger.info('Evalueat report: mIoU: {:3.4}| Acc: {:3.4}| Acc_class: {:3.4}| fwIoU: {:3.4}|'.format(
+            mIoU, Acc, Acc_class, FWIoU
+        ))
 
 
 def main():

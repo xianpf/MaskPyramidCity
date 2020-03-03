@@ -18,7 +18,6 @@ from maskpyramid.utils.tools import setup_logger, mkdir, collect_env_info
 from maskpyramid.utils.tools import TensorboardSummary
 
 
-
 class ResNet50(nn.Module):
     def __init__(self, cfg):
         super(ResNet50, self).__init__()
@@ -610,6 +609,7 @@ class InstancePyramid():
 class Trainer(object):
     def __init__(self, cfg, output_dir):
         self.cfg = cfg
+        self.output_dir = output_dir
         self.logger = logging.getLogger("MaskPyramid")
         self.tbSummary = TensorboardSummary(output_dir)
         self.writer = self.tbSummary.create_summary()
@@ -627,17 +627,24 @@ class Trainer(object):
         self.evaluator = Evaluator(self.nclass)
         self.scheduler = LR_Scheduler(cfg.SOLVER.SCHEDULE_TYPE, cfg.SOLVER.BASE_LR,
             cfg.SOLVER.EPOCHES, len(self.train_loader))
-        self.model.to(self.device)
         self.start_epoch = 0
         self.best_pred = 0.0
         self.meters = {'start_time': time.time(),
             'total_iters': cfg.SOLVER.EPOCHES*len(self.train_loader)}
         
-    def load_weights(self, path=None, subdict='model'):
-        weights = torch.load(path if path else self.cfg.MODEL.WEIGHT)
+    def load_weights(self, path=None, subdict='model', continue_train=False):
+        state_dict = torch.load(path if path else self.cfg.MODEL.WEIGHT)
         if subdict:
-            weights = weights[subdict]
-        self.model.load_state_dict(weights)
+            weights = state_dict[subdict]
+            self.model.load_state_dict(weights)
+            if self.optimizer is not None and 'optimizer' in state_dict.keys():
+                self.optimizer.load_state_dict(state_dict["optimizer"])
+            if 'best_pred' in state_dict.keys():
+                self.best_pred = state_dict["best_pred"]
+            if continue_train and 'epoch' in state_dict.keys():
+                self.start_epoch = state_dict["epoch"]
+        else:
+            self.model.load_state_dict(state_dict)
 
     def training(self, epoch):
         train_loss = 0.0
@@ -711,6 +718,18 @@ class Trainer(object):
         self.logger.info('Evalueat report: mIoU: {:3.4}| Acc: {:3.4}| Acc_class: {:3.4}| fwIoU: {:3.4}|'.format(
             mIoU, Acc, Acc_class, FWIoU
         ))
+        if mIoU > self.best_pred:
+            is_best = True
+            self.best_pred = mIoU
+            save_data = {}
+            save_data["epoch"] = epoch + 1
+            save_data["best_pred"] = self.best_pred
+            save_data["model"] = self.model.state_dict()
+            if self.optimizer is not None:
+                save_data["optimizer"] = self.optimizer.state_dict()
+            if self.scheduler is not None:
+                save_data["scheduler"] = self.scheduler.__dict__ 
+            torch.save(save_data, self.output_dir+"/model_Epoch_{:3d}.pth".format(epoch))
 
 
 def main():
@@ -731,9 +750,8 @@ def main():
     args = parser.parse_args()
 
     cfg.merge_from_file(args.config)
-    cfg.merge_from_list(['DATALOADER.BATCH_SIZE_TRAIN', 4])
-    # cfg.merge_from_list(['DATALOADER.NUM_WORKERS', 0])
-    # cfg.merge_from_list(['MODEL.DEVICE', 'cpu'])
+    # cfg.merge_from_list(['DATALOADER.BATCH_SIZE_TRAIN', 4])
+    cfg.merge_from_list(['DATALOADER.NUM_WORKERS', 0])
     # cfg.merge_from_list(['MODEL.WEIGHT', ''])
     cfg.merge_from_list(args.opts)
     cfg.freeze()

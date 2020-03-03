@@ -731,7 +731,9 @@ def main():
     args = parser.parse_args()
 
     cfg.merge_from_file(args.config)
-    cfg.merge_from_list(['DATALOADER.NUM_WORKERS', 0])
+    cfg.merge_from_list(['DATALOADER.BATCH_SIZE_TRAIN', 4])
+    # cfg.merge_from_list(['DATALOADER.NUM_WORKERS', 0])
+    # cfg.merge_from_list(['MODEL.DEVICE', 'cpu'])
     # cfg.merge_from_list(['MODEL.WEIGHT', ''])
     cfg.merge_from_list(args.opts)
     cfg.freeze()

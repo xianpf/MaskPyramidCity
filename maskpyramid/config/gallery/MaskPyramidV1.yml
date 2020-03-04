@@ -2,6 +2,7 @@
 
 DATALOADER:
   DATASET: "cityscapes"
+  DATASET_PATH: "/home/xianr/TurboRuns/cityscapes"
 
 SOLVER:
   BASE_LR: 0.01

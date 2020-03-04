@@ -14,7 +14,7 @@ _C.MULTI_RUN = False
 # ---------------------------------------------------------------------------- #
 _C.DATALOADER = CN()
 _C.DATALOADER.NUM_CLASSES = 19
-_C.DATALOADER.BASE_SIZE = 513
+_C.DATALOADER.BASE_SIZE = 2048
 _C.DATALOADER.CROP_SIZE = 513
 _C.DATALOADER.BATCH_SIZE_TRAIN = 2
 _C.DATALOADER.BATCH_SIZE_TEST = 2
@@ -22,7 +22,8 @@ _C.DATALOADER.BATCH_SIZE_VAL = 2
 _C.DATALOADER.NUM_WORKERS = 4
 _C.DATALOADER.PIN_MEMORY = True
 _C.DATALOADER.DATASET = "cityscapes"
-_C.DATALOADER.DATASET_PATH = "cityscapes"
+_C.DATALOADER.DATASET_PATH = ""
+_C.DATALOADER.IGNORE_INDEX = -1
 
 
 # ---------------------------------------------------------------------------- #

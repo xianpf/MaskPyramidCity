@@ -72,6 +72,7 @@ _C.SOLVER.WARMUP_METHOD = "linear"
 _C.SOLVER.CHECKPOINT_PERIOD = 10000
 _C.SOLVER.TEST_PERIOD = 0
 _C.SOLVER.SCHEDULE_TYPE = "poly"
+_C.SOLVER.SHOW_IMAGE = False
 # Number of images per batch
 # This is global, so if we have 8 GPUs and IMS_PER_BATCH = 16, each GPU will
 # see 2 images per batch

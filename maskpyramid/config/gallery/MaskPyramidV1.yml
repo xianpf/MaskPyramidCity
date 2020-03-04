@@ -23,3 +23,4 @@ SOLVER:
   WEIGHT_DECAY_BIAS: 0
   NESTEROV: false
   SCHEDULE_TYPE: "poly"
+  SHOW_IMAGE: true

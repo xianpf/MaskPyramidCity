@@ -850,8 +850,7 @@ def main():
         run_names = glob.glob(cfg.OUTPUT_DIR + '/*')
         matched_nums = []
         for name in run_names:
-            
-            matched_nums += re.findall(r'_v\d+_(\d+)', name)
+            matched_nums += re.findall(r'%s_(\d+)'%experiment_name, name)
         experiment_name += '_' + str(max([int(n) for n in matched_nums])+1) if matched_nums else '_1'
     output_dir = os.path.join(cfg.OUTPUT_DIR, experiment_name)
     

@@ -3,6 +3,7 @@ sys.path.insert(0, os.path.abspath(__file__+'/../..'))
 import argparse, glob, re
 from tqdm import tqdm
 import numpy as np
+import pynvml, subprocess
 
 import torch
 from torch import nn
@@ -632,6 +633,8 @@ class Trainer(object):
         self.best_pred = 0.0
         self.meters = {'start_time': time.time(),
             'total_iters': cfg.SOLVER.EPOCHES*len(self.train_loader)}
+
+        log_gpu_stat(self.logger)
         
     def load_weights(self, path=None, subdict='model', continue_train=False):
         state_dict = torch.load(path if path else self.cfg.MODEL.WEIGHT)
@@ -735,6 +738,16 @@ class Trainer(object):
                 save_data["scheduler"] = self.scheduler.__dict__ 
             torch.save(save_data, self.output_dir+"/model_Epoch_{:3d}.pth".format(epoch))
 
+def log_gpu_stat(logger):
+    pynvml.nvmlInit()
+    handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+    meminfo = pynvml.nvmlDeviceGetMemoryInfo(handle)
+    used_mem = (meminfo.used / 1024) /1024
+    pynvml.nvmlShutdown()
+    gpu_info = subprocess.check_output(["nvidia-smi"])
+    logger.info(("\nThe pid of current job is {} and {}, the used memory before we run is {}MB,"+\
+        " the <nvidia-smi> shows:\n{}").format(os.getpid(),os.getppid(), used_mem, gpu_info.decode("utf-8")))
+
 
 def main():
     parser = argparse.ArgumentParser(description="PyTorch MaskPyramid Training for Cityscapes")
@@ -777,14 +790,15 @@ def main():
     logger.info(args)
     logger.info("Collecting env info (might take some time)")
     logger.info("\n" + collect_env_info())
-
     logger.info("Loaded and archive configuration file at '{}'".format(os.path.join(output_dir, experiment_name+'_config.yml')))
+    log_gpu_stat(logger)
 
     trainer = Trainer(cfg, output_dir)
     logger.info('Starting Epoch:{} / Total Epoches:{}'.format(trainer.start_epoch, cfg.SOLVER.EPOCHES))
 
     for epoch in range(trainer.start_epoch, cfg.SOLVER.EPOCHES):
         trainer.training(epoch)
+        log_gpu_stat(logger)
         trainer.validation(epoch)
 
 

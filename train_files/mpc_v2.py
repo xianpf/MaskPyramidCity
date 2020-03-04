@@ -1,6 +1,6 @@
 import sys, os, time, datetime, curses, logging
 sys.path.insert(0, os.path.abspath(__file__+'/../..'))
-import argparse, glob
+import argparse, glob, re
 from tqdm import tqdm
 import numpy as np
 
@@ -763,10 +763,11 @@ def main():
     experiment_name = os.path.basename(__file__).split('.py')[0]
     if cfg.MULTI_RUN:
         run_names = glob.glob(cfg.OUTPUT_DIR + '/*')
-        matched_num = ''
+        matched_nums = []
         for name in run_names:
-            matched_num = name.split(os.path.join(cfg.OUTPUT_DIR, experiment_name)+'_')[-1]
-        experiment_name += '_' + str(int(matched_num)+1) if matched_num else '_1'
+            
+            matched_nums += re.findall(r'_v\d+_(\d+)', name)
+        experiment_name += '_' + str(max([int(n) for n in matched_nums])+1) if matched_nums else '_1'
     output_dir = os.path.join(cfg.OUTPUT_DIR, experiment_name)
     
     mkdir(output_dir)

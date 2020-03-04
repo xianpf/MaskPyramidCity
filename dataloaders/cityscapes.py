@@ -106,6 +106,8 @@ class BaseDataset(data.Dataset):
     def _mask_transform(self, mask):
         return torch.from_numpy(np.array(mask)).long()
 
+    def _inst_transform(self, mask):
+        import pdb; pdb.set_trace()
 
 class CitySegmentation(BaseDataset):
     NUM_CLASS = 19

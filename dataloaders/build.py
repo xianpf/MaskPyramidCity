@@ -1,6 +1,6 @@
-from dataloaders.cityscapes import CityscapesSegmentation, CityInstanceSegm
-# from dataloaders import cityscapes, coco, combine_dbs, pascal, sbd
+from dataloaders.cityscapes import CitySegmentation
 from torch.utils.data import DataLoader
+import torchvision.transforms as transform
 
 
 def make_data_loader(cfg):
@@ -20,12 +20,11 @@ def make_data_loader(cfg):
         import pdb; pdb.set_trace()
 
     elif cfg.DATALOADER.DATASET == 'cityscapes':
-        # train_set = CityscapesSegmentation(cfg, split='train')
-        # val_set = CityscapesSegmentation(cfg, split='val')
-        # test_set = CityscapesSegmentation(cfg, split='test')
-        train_set = CityInstanceSegm(cfg, split='train')
-        val_set = CityInstanceSegm(cfg, split='val')
-        test_set = CityInstanceSegm(cfg, split='test')
+        input_transform = transform.Compose([transform.ToTensor(),
+            transform.Normalize([.485, .456, .406], [.229, .224, .225])])
+        train_set = CitySegmentation(cfg, split='train', transform=input_transform)
+        val_set = CitySegmentation(cfg, split='val')
+        test_set = CitySegmentation(cfg, split='test')
         num_class = cfg.DATALOADER.NUM_CLASSES
         train_loader = DataLoader(train_set, batch_size=cfg.DATALOADER.BATCH_SIZE_TRAIN, shuffle=True, 
             num_workers=cfg.DATALOADER.NUM_WORKERS, pin_memory=cfg.DATALOADER.PIN_MEMORY)

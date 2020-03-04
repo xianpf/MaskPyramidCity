@@ -1,253 +1,256 @@
+###########################################################################
+# Created by: Hang Zhang
+# Email: zhang.hang@rutgers.edu
+# Copyright (c) 2018
+###########################################################################
+
 import os
+import sys
+import random
 import numpy as np
-import scipy.misc as m
-from PIL import Image
+from tqdm import tqdm, trange
+from PIL import Image, ImageOps, ImageFilter
+
 import torch
-from torch.utils import data
-from torchvision import transforms
-from dataloaders import city_transforms as tr
+import torch.utils.data as data
+import torchvision.transforms as transform
 
-class Path(object):
-    @staticmethod
-    def db_root_dir(dataset):
-        if dataset == 'pascal':
-            return '/path/to/datasets/VOCdevkit/VOC2012/'  # folder that contains VOCdevkit/.
-        elif dataset == 'sbd':
-            return '/path/to/datasets/benchmark_RELEASE/'  # folder that contains dataset/.
-        elif dataset == 'cityscapes':
-            return '/home/xianr/TurboRuns/cityscapes'     # foler that contains leftImg8bit/
-        elif dataset == 'panoptic_cityscapes':
-            return '/home/xianr/TurboRuns/cityscapes/newdivide'     # foler that contains leftImg8bit/
-        elif dataset == 'coco':
-            return '/home/xianr/TurboRuns/coco'
+class BaseDataset(data.Dataset):
+    def __init__(self, root, split, mode=None, transform=None, 
+                 target_transform=None, base_size=520, crop_size=480):
+        self.root = root
+        self.transform = transform
+        self.target_transform = target_transform
+        self.split = split
+        self.mode = mode if mode is not None else split
+        self.base_size = base_size
+        self.crop_size = crop_size
+        if self.mode == 'train':
+            print('BaseDataset: base_size {}, crop_size {}'. \
+                format(base_size, crop_size))
+
+    def __getitem__(self, index):
+        raise NotImplementedError
+
+    # @property
+    # def num_class(self):
+    #     return self.NUM_CLASS
+
+    @property
+    def pred_offset(self):
+        raise NotImplementedError
+
+    def make_pred(self, x):
+        return x + self.pred_offset
+
+    def _val_sync_transform(self, img, mask, inst):
+        outsize = self.crop_size
+        short_size = outsize
+        w, h = img.size
+        if w > h:
+            oh = short_size
+            ow = int(1.0 * w * oh / h)
         else:
-            print('Dataset {} not available.'.format(dataset))
-            raise NotImplementedError
+            ow = short_size
+            oh = int(1.0 * h * ow / w)
+        img = img.resize((ow, oh), Image.BILINEAR)
+        mask = mask.resize((ow, oh), Image.NEAREST)
+        inst = inst.resize((ow, oh), Image.NEAREST)
+        # center crop
+        w, h = img.size
+        x1 = int(round((w - outsize) / 2.))
+        y1 = int(round((h - outsize) / 2.))
+        img = img.crop((x1, y1, x1+outsize, y1+outsize))
+        mask = mask.crop((x1, y1, x1+outsize, y1+outsize))
+        inst = inst.crop((x1, y1, x1+outsize, y1+outsize))
+        # final transform
+        return img, self._mask_transform(mask), self._inst_transform(inst)
 
-class CityscapesSegmentation(data.Dataset):
-    NUM_CLASSES = 19
-    def __init__(self, cfg, root=Path.db_root_dir('cityscapes'), split="train"):
-        self.root = root
-        self.split = split
+    def _sync_transform(self, img, mask, inst):
+        # random mirror
+        if random.random() < 0.5:
+            img = img.transpose(Image.FLIP_LEFT_RIGHT)
+            mask = mask.transpose(Image.FLIP_LEFT_RIGHT)
+            inst = inst.transpose(Image.FLIP_LEFT_RIGHT)
+        crop_size = self.crop_size
+        w, h = img.size
+        long_size = random.randint(int(self.base_size*0.5), int(self.base_size*2.0))
+        if h > w:
+            oh = long_size
+            ow = int(1.0 * w * long_size / h + 0.5)
+            short_size = ow
+        else:
+            ow = long_size
+            oh = int(1.0 * h * long_size / w + 0.5)
+            short_size = oh
+        img = img.resize((ow, oh), Image.BILINEAR)
+        mask = mask.resize((ow, oh), Image.NEAREST)
+        inst = inst.resize((ow, oh), Image.NEAREST)
+        # pad crop
+        if short_size < crop_size:
+            padh = crop_size - oh if oh < crop_size else 0
+            padw = crop_size - ow if ow < crop_size else 0
+            img = ImageOps.expand(img, border=(0, 0, padw, padh), fill=0)
+            mask = ImageOps.expand(mask, border=(0, 0, padw, padh), fill=-1)
+            inst = ImageOps.expand(inst, border=(0, 0, padw, padh), fill=-1)
+        # random crop crop_size
+        w, h = img.size
+        x1 = random.randint(0, w - crop_size)
+        y1 = random.randint(0, h - crop_size)
+        img = img.crop((x1, y1, x1+crop_size, y1+crop_size))
+        mask = mask.crop((x1, y1, x1+crop_size, y1+crop_size))
+        inst = inst.crop((x1, y1, x1+crop_size, y1+crop_size))
+        # final transform
+        return img, self._mask_transform(mask), self._inst_transform(inst)
+
+    def _mask_transform(self, mask):
+        return torch.from_numpy(np.array(mask)).long()
+
+
+class CitySegmentation(BaseDataset):
+    NUM_CLASS = 19
+    # def __init__(self, root=os.path.expanduser('~/.encoding/data'), split='train',
+    def __init__(self, cfg, split='train',
+                 mode=None, transform=None, target_transform=None, **kwargs):
         self.cfg = cfg
-        self.files = {}
-        self.base_size = cfg.DATALOADER.BASE_SIZE
-        self.crop_size = cfg.DATALOADER.CROP_SIZE
-
-        self.images_base = os.path.join(self.root, 'leftImg8bit', self.split)
-        self.annotations_base = os.path.join(self.root, 'gtFine_trainvaltest', 'gtFine', self.split)
-
-        self.files[split] = self.recursive_glob(rootdir=self.images_base, suffix='.png')
-        # self.files[split] = self.files[split][100:100+10]
-
-        self.void_classes = [0, 1, 2, 3, 4, 5, 6, 9, 10, 14, 15, 16, 18, 29, 30, -1]
-        self.valid_classes = [7, 8, 11, 12, 13, 17, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 31, 32, 33]
+        self.root = cfg.DATALOADER.DATASET_PATH
+        super(CitySegmentation, self).__init__(
+            self.root, split, mode, transform, target_transform, base_size=cfg.DATALOADER.BASE_SIZE, 
+            crop_size=cfg.DATALOADER.CROP_SIZE, **kwargs)
+        #self.root = os.path.join(root, self.BASE_DIR)
+        self.images, self.mask_paths = get_city_pairs(self.root, self.split)
+        self.inst_paths = [mpath.replace('_gtFine_labelIds.png','_gtFine_instanceIds.png') for mpath in self.mask_paths]
+        assert (len(self.images) == len(self.mask_paths) == len(self.inst_paths))
+        if len(self.images) == 0:
+            raise RuntimeError("Found 0 images in subfolders of: \
+                " + self.root + "\n")
+        self._indices = np.array(range(-1, 19))
+        self._classes = np.array([0, 7, 8, 11, 12, 13, 17, 19, 20, 21, 22,
+                                  23, 24, 25, 26, 27, 28, 31, 32, 33])
+        self._key = np.array([-1, -1, -1, -1, -1, -1,
+                              -1, -1,  0,  1, -1, -1, 
+                              2,   3,  4, -1, -1, -1,
+                              5,  -1,  6,  7,  8,  9,
+                              10, 11, 12, 13, 14, 15,
+                              -1, -1, 16, 17, 18])
+        self._mapping = np.array(range(-1, len(self._key)-1)).astype('int32')
         self.class_names = ['unlabelled', 'road', 'sidewalk', 'building', 'wall', 'fence', \
                             'pole', 'traffic_light', 'traffic_sign', 'vegetation', 'terrain', \
                             'sky', 'person', 'rider', 'car', 'truck', 'bus', 'train', \
                             'motorcycle', 'bicycle']
 
-        self.ignore_index = 255
-        self.class_map = dict(zip(self.valid_classes, range(self.NUM_CLASSES)))
+    def _class_to_index(self, mask):
+        # assert the values
+        values = np.unique(mask)
+        for i in range(len(values)):
+            assert(values[i] in self._mapping)
+        index = np.digitize(mask.ravel(), self._mapping, right=True)
+        return self._key[index].reshape(mask.shape)
 
-        if not self.files[split]:
-            raise Exception("No files for split=[%s] found in %s" % (split, self.images_base))
+    def _inst_reindex(self, inst):
+        # assert the values
+        values = sorted(np.unique(inst))
+        for i in range(len(values)):
+            inst[inst==values[i]] = i
+        return inst
 
-        print("Found %d %s images" % (len(self.files[split]), split))
-
-    def __len__(self):
-        return len(self.files[self.split])
-
-    def __getitem__(self, index):
-
-        img_path = self.files[self.split][index].rstrip()
-        lbl_path = os.path.join(self.annotations_base,
-                                img_path.split(os.sep)[-2],
-                                os.path.basename(img_path)[:-15] + 'gtFine_labelIds.png')
-
-        _img = Image.open(img_path).convert('RGB')
-        _tmp = np.array(Image.open(lbl_path), dtype=np.uint8)
-        _tmp = self.encode_segmap(_tmp)
-        _target = Image.fromarray(_tmp)
-
-        sample = {'image': _img, 'label': _target}
-
-        if self.split == 'train':
-            return self.transform_tr(sample)
-        elif self.split == 'val':
-            return self.transform_val(sample)
-        elif self.split == 'test':
-            return self.transform_ts(sample)
-
-    def encode_segmap(self, mask):
-        # Put all void classes to zero
-        for _voidc in self.void_classes:
-            mask[mask == _voidc] = self.ignore_index
-        for _validc in self.valid_classes:
-            mask[mask == _validc] = self.class_map[_validc]
-        return mask
-
-    def recursive_glob(self, rootdir='.', suffix=''):
-        """Performs recursive glob with given suffix and rootdir
-            :param rootdir is the root directory
-            :param suffix is the suffix to be searched
-        """
-        return [os.path.join(looproot, filename)
-                for looproot, _, filenames in os.walk(rootdir)
-                for filename in filenames if filename.endswith(suffix)]
-
-    def transform_tr(self, sample):
-        composed_transforms = transforms.Compose([
-            tr.RandomHorizontalFlip(),
-            tr.RandomScaleCrop(base_size=self.base_size, crop_size=self.crop_size, fill=255),
-            tr.RandomGaussianBlur(),
-            tr.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-            tr.ToTensor()])
-
-        return composed_transforms(sample)
-
-    def transform_val(self, sample):
-
-        composed_transforms = transforms.Compose([
-            tr.FixScaleCrop(crop_size=self.crop_size),
-            tr.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-            tr.ToTensor()])
-
-        return composed_transforms(sample)
-
-    def transform_ts(self, sample):
-
-        composed_transforms = transforms.Compose([
-            tr.FixedResize(size=self.crop_size),
-            tr.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-            tr.ToTensor()])
-
-        return composed_transforms(sample)
-
-import matplotlib.pyplot as plt
-def show_img(img_show):
-    plt.figure(figsize=(6,4))
-    img_show = (img_show - img_show.min())/(img_show.max() - img_show.min())
-    plt.imshow(img_show)
-
-
-class CityInstanceSegm(data.Dataset):
-    def __init__(self, cfg, root=Path.db_root_dir('cityscapes'), split="train"):
-        self.root = root
-        self.split = split
-        self.cfg = cfg
-        self.files = {}
-        self.base_size = cfg.DATALOADER.BASE_SIZE
-        self.crop_size = cfg.DATALOADER.CROP_SIZE
-
-        self.images_base = os.path.join(self.root, 'leftImg8bit', self.split)
-        self.annotations_base = os.path.join(self.root, 'gtFine_trainvaltest', 'gtFine', self.split)
-
-        self.files[split] = self.recursive_glob(rootdir=self.images_base, suffix='.png')
-
-        self.ignore_index = 255
-        self.void_classes = [0, 1, 2, 3, 4, 5, 6, 9, 10, 14, 15, 16, 18, 29, 30, -1]
-        self.valid_classes = [7, 8, 11, 12, 13, 17, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 31, 32, 33]
-        self.class_names = ['unlabelled', 'road', 'sidewalk', 'building', 'wall', 'fence', \
-                            'pole', 'traffic_light', 'traffic_sign', 'vegetation', 'terrain', \
-                            'sky', 'person', 'rider', 'car', 'truck', 'bus', 'train', \
-                            'motorcycle', 'bicycle']
-        self.class_map = dict(zip(self.valid_classes, range(cfg.DATALOADER.NUM_CLASSES)))
-
-    def __len__(self):
-        return len(self.files[self.split])
+    def _preprocess(self, mask_file):
+        if os.path.exists(mask_file):
+            masks = torch.load(mask_file)
+            return masks
+        masks = []
+        print("Preprocessing mask, this will take a while." + \
+            "But don't worry, it only run once for each split.")
+        tbar = tqdm(self.mask_paths)
+        for fname in tbar:
+            tbar.set_description("Preprocessing masks {}".format(fname))
+            mask = Image.fromarray(self._class_to_index(
+                np.array(Image.open(fname))).astype('int8'))
+            masks.append(mask)
+        torch.save(masks, mask_file)
+        return masks
 
     def __getitem__(self, index):
-        img_path = self.files[self.split][index].rstrip()
-        lbl_path = os.path.join(self.annotations_base, img_path.split(os.sep)[-2],
-                                os.path.basename(img_path)[:-15] + 'gtFine_labelIds.png')
-        ins_path = os.path.join(self.annotations_base, img_path.split(os.sep)[-2],
-                                os.path.basename(img_path)[:-15] + 'gtFine_instanceIds.png')
+        img = Image.open(self.images[index]).convert('RGB')
+        if self.mode == 'test':
+            if self.transform is not None:
+                img = self.transform(img)
+            return img, os.path.basename(self.images[index])
+        #mask = self.masks[index]
+        mask = Image.open(self.mask_paths[index])
+        inst = Image.open(self.inst_paths[index])
+        # synchrosized transform
+        if self.mode == 'train':
+            img, mask, inst = self._sync_transform(img, mask, inst)
+        elif self.mode == 'val':
+            img, mask, inst = self._val_sync_transform(img, mask, inst)
+        else:
+            assert self.mode == 'testval'
+            import pdb; pdb.set_trace()
+            mask = self._mask_transform(mask)
+            inst = self._inst_transform(inst)
+        # general resize, normalize and toTensor
+        if self.transform is not None:
+            img = self.transform(img)
+        if self.target_transform is not None:
+            mask = self.target_transform(mask)
+            import pdb; pdb.set_trace()
+            inst = self.target_transform(inst)
+        return img, mask, inst
 
-        _img = Image.open(img_path).convert('RGB')
-        # _tmp = np.array(Image.open(lbl_path), dtype=np.uint8)
-        _lbl = np.array(Image.open(lbl_path), dtype=np.uint8)
-        _ins = np.array(Image.open(ins_path), dtype=np.uint8)
-        _lbl = self.encode_segmap(_lbl)
-        _tmp_cat = np.stack((_lbl, _ins), axis=-1)
-        _target = Image.fromarray(_tmp_cat)
+    def _mask_transform(self, mask):
+        #target = np.array(mask).astype('int32') - 1
+        target = self._class_to_index(np.array(mask).astype('int32'))
+        return torch.from_numpy(target).long()
 
-        sample = {'image': _img, 'label': _lbl, 'instance': _ins}
+    def _inst_transform(self, inst):
+        target = self._inst_reindex(np.array(inst))
+        return torch.from_numpy(target).long()
 
-        if self.split == 'train':
-            transed = self.transform_tr(sample)
-        elif self.split == 'val':
-            transed = self.transform_val(sample)
-        elif self.split == 'test':
-            transed = self.transform_ts(sample)
+    def __len__(self):
+        return len(self.images)
 
-        # res = {}
-        # target_sematic = transed['label'][..., 0]
-        # ins_mask = transed['label'][..., 1]
-        # target_masks = torch.cat([ins_mask[None] == lbl for lbl in ins_mask.unique()])
-        # target_labels = torch.Tensor([(mask.float()*target_sematic).max() for mask in target_masks]).view(-1,1)
-
-        # sample_res = {'image': _img, 'target_sematic': target_sematic, 
-        #         'target_masks': target_masks, 'label': target_labels}
-
-        # return sample_res
-
-        target_sematic = transed['label']
-        # import pdb; pdb.set_trace()
-        # print('xxxxxxxxxxxxxx', np.unique(_lbl), target_sematic.unique(), '\n', (np.unique(_lbl) == target_sematic.unique().numpy()).all())
-        
-        return transed
-
-
-    def recursive_glob(self, rootdir='.', suffix=''):
-        """Performs recursive glob with given suffix and rootdir
-            :param rootdir is the root directory
-            :param suffix is the suffix to be searched
-        """
-        return [os.path.join(looproot, filename)
-                for looproot, _, filenames in os.walk(rootdir)
-                for filename in filenames if filename.endswith(suffix)]
-
-    def encode_segmap(self, mask):
-        # Put all void classes to zero
-        for _voidc in self.void_classes:
-            mask[mask == _voidc] = self.ignore_index
-        for _validc in self.valid_classes:
-            mask[mask == _validc] = self.class_map[_validc]
-            
-        return mask
-
-    def transform_tr(self, sample):
-        composed_transforms = transforms.Compose([
-            tr.ImageWraper(),
-            tr.RandomHorizontalFlip(),
-            tr.RandomScaleCrop(base_size=self.base_size, crop_size=self.crop_size, fill=self.ignore_index),
-            tr.RandomGaussianBlur(),
-            tr.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-            tr.ToTensor()])
-
-        return composed_transforms(sample)
-
-    def transform_val(self, sample):
-
-        composed_transforms = transforms.Compose([
-            tr.ImageWraper(),
-            tr.FixScaleCrop(crop_size=self.crop_size),
-            tr.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-            tr.ToTensor()])
-
-        return composed_transforms(sample)
-
-    def transform_ts(self, sample):
-
-        composed_transforms = transforms.Compose([
-            tr.ImageWraper(),
-            tr.FixedResize(size=self.crop_size),
-            tr.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-            tr.ToTensor()])
-
-        return composed_transforms(sample)
+    def make_pred(self, mask):
+        values = np.unique(mask)
+        for i in range(len(values)):
+            assert(values[i] in self._indices)
+        index = np.digitize(mask.ravel(), self._indices, right=True)
+        return self._classes[index].reshape(mask.shape)
 
 
-def cityIns_collate(data):
-    import pdb; pdb.set_trace()
+def get_city_pairs(folder, split='train'):
+    def get_path_pairs(img_folder, mask_folder):
+        img_paths = []  
+        mask_paths = []  
+        for root, directories, files in os.walk(img_folder):
+            for filename in files:
+                if filename.endswith(".png"):
+                    imgpath = os.path.join(root, filename)
+                    foldername = os.path.basename(os.path.dirname(imgpath))
+                    maskname = filename.replace('leftImg8bit','gtFine_labelIds')
+                    maskpath = os.path.join(mask_folder, foldername, maskname)
+                    if os.path.isfile(imgpath) and os.path.isfile(maskpath):
+                        img_paths.append(imgpath)
+                        mask_paths.append(maskpath)
+                    else:
+                        print('cannot find the mask or image:', imgpath, maskpath)
+        print('Found {} images in the folder {}'.format(len(img_paths), img_folder))
+        return img_paths, mask_paths
+
+    if split == 'train' or split == 'val' or split == 'test':
+        img_folder = os.path.join(folder, 'leftImg8bit/' + split)
+        mask_folder = os.path.join(folder, 'gtFine/'+ split)
+        img_paths, mask_paths = get_path_pairs(img_folder, mask_folder)
+        return img_paths, mask_paths
+    else:
+        assert split == 'trainval'
+        print('trainval set')
+        train_img_folder = os.path.join(folder, 'leftImg8bit/train')
+        train_mask_folder = os.path.join(folder, 'gtFine/train')
+        val_img_folder = os.path.join(folder, 'leftImg8bit/val')
+        val_mask_folder = os.path.join(folder, 'gtFine/val')
+        train_img_paths, train_mask_paths = get_path_pairs(train_img_folder, train_mask_folder)
+        val_img_paths, val_mask_paths = get_path_pairs(val_img_folder, val_mask_folder)
+        img_paths = train_img_paths + val_img_paths
+        mask_paths = train_mask_paths + val_mask_paths
+    return img_paths, mask_paths

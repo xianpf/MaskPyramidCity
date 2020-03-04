@@ -5,7 +5,7 @@ DATALOADER:
   BATCH_SIZE_VAL: 2
   CROP_SIZE: 513
   DATASET: cityscapes
-  DATASET_PATH: cityscapes
+  DATASET_PATH: '/home/jingxiong9/xjj/datasets/cityscapes/'
   NUM_CLASSES: 19
   NUM_WORKERS: 4
   PIN_MEMORY: true
@@ -22,7 +22,7 @@ MODEL:
   ROI_BOX_HEAD:
     NUM_CLASSES: 81
   WEIGHT: ''
-MULTI_RUN: false
+MULTI_RUN: true
 OUTPUT_DIR: run/
 SOLVER:
   BASE_LR: 0.01

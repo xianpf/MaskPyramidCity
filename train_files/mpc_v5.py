@@ -888,8 +888,6 @@ def main():
         log_gpu_stat(logger)
         trainer.validation(epoch)
 
-
-    import pdb; pdb.set_trace()
     trainer.writer.close()
 
 if __name__ == "__main__":

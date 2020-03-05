@@ -10,4 +10,4 @@ SOLVER:
   BASE_LR: 0.01
   EPOCHES: 200
   SCHEDULE_TYPE: "poly"
-  SHOW_IMAGE: true
+  SHOW_IMAGE: false

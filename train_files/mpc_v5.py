@@ -880,7 +880,8 @@ def main():
 
     trainer = Trainer(cfg, output_dir)
     logger.info('Starting Epoch:{} / Total Epoches:{}'.format(trainer.start_epoch, cfg.SOLVER.EPOCHES))
-    trainer.load_weights('run/mpc_v3/model_Epoch_  9.pth')
+    if cfg.MODEL.WEIGHT:
+        trainer.load_weights(cfg.MODEL.WEIGHT)
 
     for epoch in range(trainer.start_epoch, cfg.SOLVER.EPOCHES):
         trainer.training(epoch)

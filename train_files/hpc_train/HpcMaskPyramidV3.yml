@@ -8,7 +8,7 @@ DATALOADER:
   DATASET_PATH: /home/jingxiong9/xjj/datasets/cityscapes/
   IGNORE_INDEX: -1
   NUM_CLASSES: 19
-  NUM_WORKERS: 0
+  NUM_WORKERS: 4
   PIN_MEMORY: true
 MODEL:
   DEVICE: cuda

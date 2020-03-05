@@ -106,7 +106,7 @@ class BaseDataset(data.Dataset):
     def _mask_transform(self, mask):
         return torch.from_numpy(np.array(mask)).long()
 
-    def _inst_transform(self, mask):
+    def _inst_transform(self, inst):
         import pdb; pdb.set_trace()
 
 class CitySegmentation(BaseDataset):
@@ -150,11 +150,12 @@ class CitySegmentation(BaseDataset):
         return self._key[index].reshape(mask.shape)
 
     def _inst_reindex(self, inst):
+        res_inst = inst.copy()
         # assert the values
         values = sorted(np.unique(inst))
-        for i in range(len(values)):
-            inst[inst==values[i]] = i
-        return inst
+        for i, v in enumerate(values):
+            res_inst[inst==v] = i
+        return res_inst
 
     def _preprocess(self, mask_file):
         if os.path.exists(mask_file):

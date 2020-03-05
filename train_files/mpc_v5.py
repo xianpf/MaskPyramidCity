@@ -11,7 +11,6 @@ import torch.nn.functional as F
 
 from maskpyramid.config import cfg
 from maskpyramid.modeling.backbone import resnet
-from maskpyramid.solver.build import make_optimizer, make_lr_scheduler
 from dataloaders.build import make_data_loader
 from maskpyramid.utils.metrics import Evaluator
 from maskpyramid.utils.lr_scheduler import LR_Scheduler
@@ -618,15 +617,13 @@ class Trainer(object):
         self.tbSummary = TensorboardSummary(output_dir)
         self.writer = self.tbSummary.create_summary()
         self.model = MaskPyramids(cfg)
-        # self.optimizer = make_optimizer(cfg, self.model)
-        # self.scheduler = make_lr_scheduler(cfg, self.optimizer)
         self.device = torch.device(cfg.MODEL.DEVICE)
         self.model.to(self.device)
         self.train_loader, self.val_loader, self.test_loader, self.nclass = make_data_loader(cfg)
 
         train_params = [{'params': self.model.parameters(), 'lr': cfg.SOLVER.BASE_LR}]
         self.optimizer = torch.optim.SGD(train_params, momentum=cfg.SOLVER.MOMENTUM,
-                        weight_decay=cfg.SOLVER.WEIGHT_DECAY, nesterov=cfg.SOLVER.NESTEROV)
+                weight_decay=cfg.SOLVER.WEIGHT_DECAY, nesterov=cfg.SOLVER.NESTEROV)
 
         self.evaluator = Evaluator(self.nclass)
         self.scheduler = LR_Scheduler(cfg.SOLVER.SCHEDULE_TYPE, cfg.SOLVER.BASE_LR,
@@ -700,7 +697,10 @@ class Trainer(object):
             semat_a_image, insts_a_image = targets['label'][i], targets['instance'][i]
             if max([len(semat_a_image[insts_a_image == j].unique()) for j in range(len(insts_a_image.unique()))]) > 1:
                 import pdb; pdb.set_trace()
-            class_of_inst = [semat_a_image[insts_a_image == j].unique().item() for j in range(len(insts_a_image.unique()))]
+            try:
+                class_of_inst = [semat_a_image[insts_a_image == j].unique().item() for j in range(len(insts_a_image.unique()))]
+            except:
+                import pdb; pdb.set_trace()
             class_names = self.train_loader.dataset.class_names
             insts_a_image_np = insts_a_image.detach().cpu().numpy()
             masked_target = self.rend_on_image(images_np, insts_a_image_np, class_of_inst)
@@ -838,7 +838,7 @@ def main():
     parser = argparse.ArgumentParser(description="PyTorch MaskPyramid Training for Cityscapes")
     parser.add_argument(        # args.config
         "--config",
-        default="maskpyramid/config/gallery/MaskPyramidV1.yml",
+        default="maskpyramid/config/gallery/MaskPyramidV5.yml",
         metavar="FILE",
         help="path to config file",
         type=str,
@@ -855,7 +855,7 @@ def main():
     # cfg.merge_from_list(['DATALOADER.BATCH_SIZE_TRAIN', 4])
     cfg.merge_from_list(['DATALOADER.NUM_WORKERS', 0])
     cfg.merge_from_list(['SOLVER.SEMATIC_ONLY', True])
-    # cfg.merge_from_list(['MODEL.WEIGHT', ''])
+    cfg.merge_from_list(['MODEL.WEIGHT', 'run/hpc_good/mpc_v3_6/model_Epoch_ 20.pth'])
     cfg.merge_from_list(args.opts)
     cfg.freeze()
 

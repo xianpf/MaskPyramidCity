@@ -853,9 +853,9 @@ def main():
 
     cfg.merge_from_file(args.config)
     # cfg.merge_from_list(['DATALOADER.BATCH_SIZE_TRAIN', 4])
-    cfg.merge_from_list(['DATALOADER.NUM_WORKERS', 0])
-    cfg.merge_from_list(['SOLVER.SEMATIC_ONLY', True])
-    cfg.merge_from_list(['MODEL.WEIGHT', 'run/hpc_good/mpc_v3_6/model_Epoch_ 20.pth'])
+    # cfg.merge_from_list(['DATALOADER.NUM_WORKERS', 0])
+    # cfg.merge_from_list(['SOLVER.SEMATIC_ONLY', True])
+    # cfg.merge_from_list(['MODEL.WEIGHT', 'run/hpc_good/mpc_v3_6/model_Epoch_ 20.pth'])
     cfg.merge_from_list(args.opts)
     cfg.freeze()
 

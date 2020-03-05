@@ -33,4 +33,4 @@ dist/
 /run
 /.vscode
 /archived
-/hpc_works/*.out
+train_files/hpc_train/*.out

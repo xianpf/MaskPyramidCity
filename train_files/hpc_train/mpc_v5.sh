@@ -4,7 +4,7 @@
 #SBATCH --job-name=mpc_xpf
 #SBATCH --gres=gpu:1
 
-mpirun python train_files/mpc_v5.py --config hpc_works/HpcMaskPyramidV3.yml
+mpirun python train_files/mpc_v5.py --config train_files/hpc_train/HpcMaskPyramidV5.yml
 
 # MODEL.DEVICE cpu
 # sbatch train_files/hpc_train/mpc_v5.sh

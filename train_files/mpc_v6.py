@@ -807,8 +807,8 @@ class Trainer(object):
         self.writer.add_scalar('val/Acc_class', Acc_class, epoch)
         self.writer.add_scalar('val/fwIoU', FWIoU, epoch)
 
-        self.logger.info('Evalueat report: mIoU: {:3.4}| Acc: {:3.4}| Acc_class: {:3.4}| fwIoU: {:3.4}|'.format(
-            mIoU, Acc, Acc_class, FWIoU
+        self.logger.info('Evalueat report: mIoU: {:3.4}| Acc: {:3.4}| Acc_class: {:3.4}| fwIoU: {:3.4}| previousBest: {:3.4}|'.format(
+            mIoU, Acc, Acc_class, FWIoU, self.best_pred
         ))
         if mIoU > self.best_pred:
             is_best = True

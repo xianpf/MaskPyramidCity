@@ -695,12 +695,7 @@ class Trainer(object):
             images_np = image.permute(1,2,0).detach().cpu().numpy()
             images_np = ((images_np - images_np.min()) / (images_np.max() - images_np.min()))[...,::-1]
             semat_a_image, insts_a_image = targets['label'][i], targets['instance'][i]
-            if max([len(semat_a_image[insts_a_image == j].unique()) for j in range(len(insts_a_image.unique()))]) > 1:
-                import pdb; pdb.set_trace()
-            try:
-                class_of_inst = [semat_a_image[insts_a_image == j].unique().item() for j in range(len(insts_a_image.unique()))]
-            except:
-                import pdb; pdb.set_trace()
+            class_of_inst = [semat_a_image[insts_a_image == j].unique().item() for j in range(len(insts_a_image.unique()))]
             class_names = self.train_loader.dataset.class_names
             insts_a_image_np = insts_a_image.detach().cpu().numpy()
             masked_target = self.rend_on_image(images_np, insts_a_image_np, class_of_inst)
@@ -718,9 +713,10 @@ class Trainer(object):
                 inst_a_image_np = inst_a_image.max(0)[1].detach().cpu().numpy()
                 # TODO: 标label的3种逻辑：1.以root处为准；2.以mask响应最高处为准；3.以本mask出头范围内响应最高处为准
                 # import pdb; pdb.set_trace()
+                # 1.以root处为准
                 inst_label = [-1,] + [F.interpolate(semat_a_image[None,None].float(), pyr.init_size, mode='nearest')[0,\
                     0,pyr.pos[0], pyr.pos[1]].long().item() for pyr in pyramids]
-                masked_instance = self.rend_on_image(images_np, sematic_a_image_np, inst_label)
+                masked_instance = self.rend_on_image(images_np, inst_a_image_np, inst_label)
 
                 masked_imgs.append(np.hstack((images_np, masked_target, masked_sematic, masked_instance)))
 

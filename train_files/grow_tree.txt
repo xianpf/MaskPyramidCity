@@ -1,0 +1,7 @@
+------
+ |---->  mpc_v1: initialize; allow model save and load better; 
+  |---->  mpc_v2: for new dataloader
+   |---->  mpc_v3: allow show the running image &gpustat
+    |---->  mpc_v4: show running instance (root boost)
+     |---->  mpc_v5: allow sematic only
+      |---->  mpc_v6: all 'bilinear' interpolation align corner

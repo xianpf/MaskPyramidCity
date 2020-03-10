@@ -33,4 +33,5 @@ dist/
 /run
 /.vscode
 /archived
+/grow_model
 train_files/hpc_train/*.out

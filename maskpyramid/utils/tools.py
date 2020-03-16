@@ -63,3 +63,15 @@ class TensorboardSummary(object):
         grid_image = make_grid(decode_seg_map_sequence(torch.squeeze(target[:3], 1).detach().cpu().numpy(),
                                                        dataset=dataset), 3, normalize=False, range=(0, 255))
         writer.add_image('Groundtruth label', grid_image, global_step)
+
+
+
+def flatten_list(lst):
+    for el in lst:
+        if isinstance(el, list):  # N.B. this only works for lists, not general
+                                  # collections e.g. sets, tuples, dicts, etc...
+            # recurse
+            yield from flatten_list(el)
+        else:
+            # generate
+            yield el

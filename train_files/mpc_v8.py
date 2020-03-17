@@ -241,52 +241,6 @@ class MaskPyramids(nn.Module):
             )
         self.ins_cat_pyr_convs = nn.ModuleList(self.ins_cat_pyr_convs)
 
-        self.init_pyramid = nn.Sequential(
-            Bottleneck(256, 256, 256, 1, False, 1, 1, nn.BatchNorm2d),
-            Bottleneck(256, 256, 256, 1, False, 1, 1, nn.BatchNorm2d),
-            Bottleneck(256, 256, 256, 1, False, 1, 1, nn.BatchNorm2d),
-        )
-        self.class_logits = nn.Sequential(
-            Bottleneck(256, 64, 128, 1, False, 2, 1, nn.BatchNorm2d),
-            Bottleneck(128, 64, 64, 1, False, 2, 1, nn.BatchNorm2d),
-            Bottleneck(64, 32, 32, 1, False, 2, 1, nn.BatchNorm2d),
-        )
-        self.cls_score = nn.Linear(32*5*5, num_classes)
-
-        self.chn256_6 = nn.Conv2d(512+2, 256, 1)
-        self.chn256_5 = nn.Conv2d(256+2, 256, 1)
-        self.chn256_4 = nn.Conv2d(512+2, 256, 1)
-        self.chn256_3 = nn.Conv2d(256+2, 256, 1)
-        self.chn256_2 = nn.Conv2d(512+2, 256, 1)
-        self.chn256_s = [self.chn256_6, self.chn256_5, self.chn256_4, self.chn256_3, self.chn256_2]
-
-        self.conv_6 = Bottleneck(256, 64, 256, 1, False, 1, 1, nn.BatchNorm2d)
-        self.conv_5 = Bottleneck(256, 64, 256, 1, False, 1, 1, nn.BatchNorm2d)
-        self.conv_4 = Bottleneck(256, 64, 256, 1, False, 1, 1, nn.BatchNorm2d)
-        self.conv_3 = Bottleneck(256, 64, 256, 1, False, 1, 1, nn.BatchNorm2d)
-        self.conv_2 = Bottleneck(256, 64, 256, 1, False, 1, 1, nn.BatchNorm2d)
-        self.conv_s = [self.conv_6, self.conv_5, self.conv_4, self.conv_3, self.conv_2]
-
-        self.out_6 = nn.Conv2d(256, 1, 1)
-        self.out_5 = nn.Conv2d(256, 1, 1)
-        self.out_4 = nn.Conv2d(256, 1, 1)
-        self.out_3 = nn.Conv2d(256, 1, 1)
-        self.out_2 = nn.Conv2d(256, 1, 1)
-        self.out_s = [self.out_6, self.out_5, self.out_4, self.out_3, self.out_2]
-
-        self.bg_6 = nn.Conv2d(512, 1, 1)
-        self.bg_5 = nn.Conv2d(256, 1, 1)
-        self.bg_4 = nn.Conv2d(512, 1, 1)
-        self.bg_3 = nn.Conv2d(256, 1, 1)
-        self.bg_2 = nn.Conv2d(512, 1, 1)
-        self.bg_s = [self.bg_6, self.bg_5, self.bg_4, self.bg_3, self.bg_2]
-
-        self.upmix256_5 = nn.Conv2d(256+256+2, 256, 1)
-        self.upmix256_4 = nn.Conv2d(512+256+2, 256, 1)
-        self.upmix256_3 = nn.Conv2d(256+256+2, 256, 1)
-        self.upmix256_2 = nn.Conv2d(512+256+2, 256, 1)
-        self.upmix256_s = [None, self.upmix256_5, self.upmix256_4, self.upmix256_3, self.upmix256_2]
-
         # self.sematic_conv_5 = Bottleneck(512+256, 64, 256, 1, False, 1, 1, nn.BatchNorm2d)
         self.sematic_conv_5 = Bottleneck(512, 64, 256, 1, False, 1, 1, nn.BatchNorm2d)
         self.sematic_conv_4 = Bottleneck(512, 64, 256, 1, False, 1, 1, nn.BatchNorm2d)
@@ -615,26 +569,29 @@ class MaskPyramids(nn.Module):
         xs_r50 = self.resnet50(image)
         sematic_loss, sematic_out = self.compute_sematic(xs_r50, targets)
         if self.cfg.SOLVER.SEMATIC_ONLY:
-            output_dict['loss_dict'] = {'class_loss':sematic_loss.mean()}
-            output_dict['sematic_out'] = sematic_out[-1]
+            output_dict['loss_dict'] = {'sematic': sematic_loss.mean(), 'instance': 0}
+            output_dict['sematic_out'] = sematic_out
+            output_dict['targets'] = targets
+            output_dict['ins_pyramids'] =[[]]
             return output_dict
 
         # import pdb; pdb.set_trace()
         instance_categories = [11, 12, 13, 14, 15, 16, 17, 18]
         lvl_sizes = [tuple(f.shape[-2:]) for f in xs_r50[::-1]]+[(513,513)]
-        inst_pyramids = [[]]*N
 
         # 调换顺序，找最大值处后， 先分配target， target指定了cat
         pyr_id_own_ins_target = [{} for _ in range(N)]
         pyr_losses = [[[] for _ in range(N)] for __ in range(7)]
         ins_pyramids = [[] for _ in range(N)]
-        # for sem_lvl in range(7):
+        in_dict_watches = [dict() for _ in range(N)]
         for sem_lvl in range(6):
             lvl_size = lvl_sizes[sem_lvl]
             if targets is not None:
                 inst_targets = self.prepare_targets(targets, mode='instance', down_size=lvl_size)
                 sematic_targets = self.prepare_targets(targets, mode='sematic', down_size=lvl_size)
             for bid in range(N):
+                # in_dict_watches[bid]['sem_target'] = sematic_targets
+                # in_dict_watches[bid]['ins_target'] = inst_targets
                 sematic_logits = sematic_out[sem_lvl][bid]
                 max_idx_sematic = sematic_logits.max(0)[1]
                 # free_space = torch.ones_like(max_idx_sematic)
@@ -660,7 +617,7 @@ class MaskPyramids(nn.Module):
                                 pyr.set_ins_target(sem_lvl, inst_target == ins_tar_id)
                             else:
                                 # if len([flatten_list(ins_pyramids)]) > 80:
-                                if len(ins_pyramids[bid]) > 70:
+                                if len(ins_pyramids[bid]) > 30:
                                     continue
                                 cat_logit = sematic_logits[target_cat]
                                 logit_within_instar = cat_logit * (inst_target == ins_tar_id).float()
@@ -735,7 +692,9 @@ class MaskPyramids(nn.Module):
 
         output_dict['loss_dict'] = {'sematic': sematic_loss.mean(), 'instance': instance_loss.mean()}
         output_dict['sematic_out'] = sematic_out
+        output_dict['targets'] = targets
         output_dict['ins_pyramids'] =ins_pyramids
+        # output_dict['in_dict_watches'] =in_dict_watches
 
         return output_dict
 
@@ -871,95 +830,6 @@ class Trainer(object):
         else:
             self.model.load_state_dict(state_dict)
 
-    def rend_on_image(self, image_np, masks_np, labels):
-        alpha = 0.5
-        colors = np.array([
-            [0, 100, 0],
-            [128, 64, 128],
-            [244, 35, 232],
-            [70, 70, 70],
-            [102, 102, 156],
-            [190, 153, 153],
-            [153, 153, 153],
-            [250, 170, 30],
-            [220, 220, 0],
-            [107, 142, 35],
-            [152, 251, 152],
-            [0, 130, 180],
-            [220, 20, 60],
-            [255, 0, 0],
-            [0, 0, 142],
-            [0, 0, 70],
-            [0, 60, 100],
-            [0, 80, 100],
-            [0, 0, 230],
-            [119, 11, 32]])
-        # import pdb; pdb.set_trace()
-        masked = image_np.copy()
-        for i, label in enumerate(labels):
-            mask_idx = np.nonzero(masks_np == i)
-            masked[mask_idx[0], mask_idx[1], :] *= 1.0 - alpha
-            color = (colors[label+1]+i)/255.0
-            masked[mask_idx[0], mask_idx[1], :] += alpha * color
-            # import pdb; pdb.set_trace()
-            contours, hierarchy = cv2.findContours(
-                (masks_np == i).astype(np.uint8), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE
-            )
-            # masked = cv2.drawContours(masked, contours, -1, (1.,1.,1.), -1)
-            masked = cv2.drawContours(masked, contours, -1, (1.,1.,1.), 1)
-
-        return masked
-
-    def rend_on_image_l1(self, image_np, masks_np, labels_list):
-        # label 从0开始，0 表示unlabeled
-        alpha = 0.5
-        color_bias = 1
-        # import pdb; pdb.set_trace()
-        class_count = [0]*(max(labels_list)+1)
-        colors = np.array([
-            [0, 100, 0],
-            [128, 64, 128],
-            [244, 35, 232],
-            [70, 70, 70],
-            [102, 102, 156],
-            [190, 153, 153],
-            [153, 153, 153],
-            [250, 170, 30],
-            [220, 220, 0],
-            [107, 142, 35],
-            [152, 251, 152],
-            [0, 130, 180],
-            [220, 20, 60],
-            [255, 0, 0],
-            [0, 0, 142],
-            [0, 0, 70],
-            [0, 60, 100],
-            [0, 80, 100],
-            [0, 0, 230],
-            [119, 11, 32]])
-        # import pdb; pdb.set_trace()
-        masked = image_np.copy()
-        # import pdb; pdb.set_trace()
-        for i, label in enumerate(labels_list):
-            mask_idx = np.nonzero(masks_np == i)
-            masked[mask_idx[0], mask_idx[1], :] *= 1.0 - alpha
-            color = (colors[label]+class_count[label]*color_bias)/255.0
-            # try:
-            #     color = (colors[label]+class_count[label]*color_bias)/255.0
-            # except:
-            #     import pdb; pdb.set_trace()
-
-            masked[mask_idx[0], mask_idx[1], :] += alpha * color
-            # import pdb; pdb.set_trace()
-            contours, hierarchy = cv2.findContours(
-                (masks_np == i).astype(np.uint8), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE
-            )
-            # masked = cv2.drawContours(masked, contours, -1, (1.,1.,1.), -1)
-            masked = cv2.drawContours(masked, contours, -1, (1.,1.,1.), 1)
-            class_count[label] += 1
-
-        return masked
-
     def mask_inst_img(self, images_np, sematic_a_image_np, output, idx, level=-1, label_mode=1, insts_a_image=None):
         pyramids = output['all_pyramids'][idx]
         inst_target = None
@@ -988,53 +858,68 @@ class Trainer(object):
 
         return  inst_output, inst_target
 
-    def show_image(self, images, output, targets):
-        N,C,H,W = images.shape
-        masked_imgs = []
-        for i, image in enumerate(images):
-            images_np = image.permute(1,2,0).detach().cpu().numpy()
-            images_np = ((images_np - images_np.min()) / (images_np.max() - images_np.min()))[...,::-1]
-            semat_a_image, insts_a_image = targets['label'][i], targets['instance'][i]
-            class_of_inst = [semat_a_image[insts_a_image == j].unique().item() for j in range(len(insts_a_image.unique()))]
-            class_names = self.train_loader.dataset.class_names
-            insts_a_image_np = insts_a_image.detach().cpu().numpy()
-            masked_target = self.rend_on_image(images_np, insts_a_image_np, class_of_inst)
-            # prediction
-            sematic_out_image = output['sematic_out'][i]
-            sematic_out_image_np = sematic_out_image.max(0)[1].detach().cpu().numpy()
-            masked_sematic = self.rend_on_image(images_np, sematic_out_image_np, range(19))
-            if self.cfg.SOLVER.SEMATIC_ONLY:
-                masked_imgs.append(np.hstack((images_np, masked_target, masked_sematic)))
-            else:
-                # instance
-                # import pdb; pdb.set_trace()
-                inst_output, inst_target = self.mask_inst_img(images_np, sematic_out_image_np, output, i, insts_a_image=insts_a_image)
-                # pyramids = output['all_pyramids'][i]
-                # inst_masks = torch.cat([pyramids[0].get_mask(3)[:,0]]+[pyr.get_mask(3)[:,1] for pyr in pyramids], dim=0)
-                # inst_a_image = F.interpolate(inst_masks[None], self.cfg.DATALOADER.CROP_SIZE, mode='bilinear', align_corners=True)[0]
-                # inst_a_image_np = inst_a_image.max(0)[1].detach().cpu().numpy()
-                # # TODO: 标label的3种逻辑：1.以root处为准；2.以mask响应最高处为准；3.以本mask出头范围内响应最高处为准
-                # # import pdb; pdb.set_trace()
-                # # 1.以root处为准
-                # inst_label = [-1,] + [F.interpolate(semat_a_image[None,None].float(), pyr.init_size, mode='nearest')[0,\
-                #     0,pyr.pos[0], pyr.pos[1]].long().item() for pyr in pyramids]
-                # masked_instance = self.rend_on_image(images_np, inst_a_image_np, inst_label)
+    def rend_on_image_v8(self, image_np, masks_np, labels_list):
+        # label 从0开始，0 表示unlabeled
+        alpha = 0.5
+        color_bias = 1
+        # import pdb; pdb.set_trace()
+        # print('masks_np unique',np.unique(masks_np), 'labels_list', labels_list)
+        class_count = [0 for _ in range(20)]
+        colors = np.array([
+            # [0, 100, 0],
+            [128, 64, 128],
+            [244, 35, 232],
+            [70, 70, 70],
+            [102, 102, 156],
+            [190, 153, 153],
+            [153, 153, 153],
+            [250, 170, 30],
+            [220, 220, 0],
+            [107, 142, 35],
+            [152, 251, 152],
+            [0, 130, 180],
+            [220, 20, 60],
+            [255, 0, 0],
+            [0, 0, 142],
+            [0, 0, 70],
+            [0, 60, 100],
+            [0, 80, 100],
+            [0, 0, 230],
+            [119, 11, 32]])
+        # import pdb; pdb.set_trace()
+        masked = image_np.copy()
+        # import pdb; pdb.set_trace()
+        for i, label in enumerate(labels_list):
+            if label == -1:
+                continue
+            mask_idx = np.nonzero(masks_np == i)
+            masked[mask_idx[0], mask_idx[1], :] *= 1.0 - alpha
+            color = (colors[label]+class_count[label]*color_bias)/255.0
+            # try:
+            #     color = (colors[label]+class_count[label]*color_bias)/255.0
+            # except:
+            #     import pdb; pdb.set_trace()
 
-                masked_imgs.append(np.hstack((images_np, masked_target, masked_sematic, inst_output)))
+            masked[mask_idx[0], mask_idx[1], :] += alpha * color
+            # import pdb; pdb.set_trace()
+            contours, hierarchy = cv2.findContours(
+                (masks_np == i).astype(np.uint8), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE
+            )
+            # masked = cv2.drawContours(masked, contours, -1, (1.,1.,1.), -1)
+            masked = cv2.drawContours(masked, contours, -1, (1.,1.,1.), 1)
+            class_count[label] += 1
 
-        masked_show = np.vstack(masked_imgs)
-        cv2.imshow('Observation V5', masked_show)
-        cv2.waitKey(1)
+        return masked
 
-    def show_image_l1(self, images, output, targets):
+    def show_image_v8(self, images, output, targets):
         N,C,H,W = images.shape
         masked_imgs = []
         origin_image_ON = True
-        inst_target_513_fwd_ON = False
-        inst_target_513_fwd_car_ON = True
-        inst_target_5_fwd_ON = False
-        inst_pred_sematic_ON = True
-        inst_pred_l0_ON = False
+        ori_sematic_target_ON = False
+        ori_instance_target_ON = True
+        car_only_ON = False
+        pred_sematic_ON = True
+        pred_instance_ON = True
         for i, image in enumerate(images):
             parts_to_show = []
             images_np = image.permute(1,2,0).detach().cpu().numpy()
@@ -1044,76 +929,48 @@ class Trainer(object):
             semat_a_target, insts_a_target = targets['label'][i], targets['instance'][i]
 
             # targets prepared in forwards
-            out_one = output['in_dict_watches'][i]
-            target_fwd_label = (out_one['target_levels']['labels']+1).tolist()
-                
-            if inst_target_513_fwd_ON:
-                target_fwd_513 = out_one['target_levels'][0]
-                target_513_compact_np = target_fwd_513[0].max(0)[1].detach().cpu().numpy()
-                masked_target_513 = self.rend_on_image_l1(images_np, target_513_compact_np, target_fwd_label)
-                parts_to_show.append(masked_target_513)
-                
-            if inst_target_513_fwd_car_ON:
-                if 14 in target_fwd_label:
-                    target_fwd_513_car = out_one['target_levels'][0]
-                    target_513_car_compact_np = target_fwd_513_car[0].max(0)[1].detach().cpu().numpy()
-                    car_idx = [i for i, label in enumerate(target_fwd_label) if label == 14]
-                    new_label = [label for label in target_fwd_label if label == 14]
-                    new_mask_np = target_fwd_513_car[0,[car_idx]][0].max(0)[1].detach().cpu().numpy()
+            # out_one = output['in_dict_watches'][i]
+            # target_fwd_label = (out_one['target_levels']['labels']+1).tolist()
+            sematic_target = output['targets']['label'][i]
+            instacne_target = output['targets']['instance'][i]
+            sematic_out_513 = output['sematic_out'][6]
 
-                    masked_target_513_car = self.rend_on_image_l1(images_np, new_mask_np, new_label)
-                    parts_to_show.append(masked_target_513_car)
-                else:
-                    parts_to_show.append(images_np)
+            if ori_sematic_target_ON:
+                sematic_target_np = sematic_target.detach().cpu().numpy()
+                ori_sematic_target = self.rend_on_image_v8(images_np, sematic_target_np, range(19))
+                parts_to_show.append(ori_sematic_target)
 
+            if ori_instance_target_ON:
+                instacne_target_np = instacne_target.detach().cpu().numpy()
+                ins_cats = [sematic_target[instacne_target == ins_idx].unique().item() for ins_idx in instacne_target.unique()]
+                if car_only_ON:
+                    ins_cats = [13 if label==13 else -1 for label in ins_cats]
+                ori_instacne_target = self.rend_on_image_v8(images_np, instacne_target_np, ins_cats)
+                parts_to_show.append(ori_instacne_target)
 
+            # import pdb; pdb.set_trace()
+            # prediction    - sematic
+            if pred_sematic_ON:
+                sematic_predict_np = sematic_out_513[0].max(0)[1].detach().cpu().numpy()
+                sematic_predict = self.rend_on_image_v8(images_np, sematic_predict_np, range(19))
+                parts_to_show.append(sematic_predict)
 
-            if inst_target_5_fwd_ON:
-                # targets size 5 prepared in forwards
-                target_fwd_5 = out_one['target_levels'][7]
-                target_5_compact_np = target_fwd_5[0].max(0)[1].detach().cpu().numpy()
-                target_5_up513_compact_np = F.interpolate(target_fwd_5[0].max(0)[1][None, None].float(), 
-                    self.cfg.DATALOADER.CROP_SIZE, mode='nearest')[0,0].detach().cpu().numpy()
-                masked_target_5 = self.rend_on_image_l1(images_np, target_5_up513_compact_np, target_fwd_label)
-                parts_to_show.append(masked_target_5)
-
-            # prediction
-            sematic_out_image = output['sematic_out'][i]
-            if inst_pred_sematic_ON:
-                sematic_out_image_np = sematic_out_image.max(0)[1].detach().cpu().numpy()
-                out_sematic = self.rend_on_image_l1(images_np, sematic_out_image_np, range(19))
-                parts_to_show.append(out_sematic)
-
-            # out instances
-            if inst_pred_l0_ON:
-                pyramids = out_one['inst_pyramids']
-
-                lvl = 0
-                pyramids = [pyr for pyr in pyramids if pyr.init_level==0]
-                bg_mask_5 = pyramids[0].get_mask(lvl)[0,0][None]
-                masks_out_list = [bg_mask_5] + [pyr.get_mask(lvl)[0,1][None] for pyr in pyramids]
-                masks_out_5 = torch.cat(masks_out_list)
-                # import pdb; pdb.set_trace()
-
-                masks_out_5_up513_compact_np = F.interpolate(masks_out_5.max(0)[1][None, None].float(), 
-                    self.cfg.DATALOADER.CROP_SIZE, mode='nearest')[0,0].detach().cpu().numpy()
-                pyr_target_label_idx = [pyr.target_idx for pyr in pyramids]
-                pyr_target_label = [target_fwd_label[idx] if idx is not None else 0 for idx in pyr_target_label_idx]
-                # pos_list = [tuple(pyr.pos.tolist()) for pyr in pyramids]
-                # masks_label = 
-
-                inst_pred_l0 = self.rend_on_image_l1(images_np, masks_out_5_up513_compact_np, pyr_target_label)
-                parts_to_show.append(inst_pred_l0)
-
-            # labels = 
-
-
+            if not self.cfg.SOLVER.SEMATIC_ONLY:
+                parymids = output['ins_pyramids']
+                # prediction    - instance
+                if pred_instance_ON:
+                    instance_predict = torch.cat([pyr.get_mask(5) for pyr in  parymids[i]], dim=1) if len(parymids[i]) else torch.empty((1,1,513,513))
+                    instance_predict_513 = F.interpolate(instance_predict, 513, mode='bilinear', align_corners=True)
+                    instance_predict_np = instance_predict_513[0].max(0)[1].detach().cpu().numpy()
+                    ins_cats_predict = [pyr.tar_cat for pyr in  parymids[i]]
+                    pred_instance = self.rend_on_image_v8(images_np, instance_predict_np, range(19))
+                parts_to_show.append(pred_instance)
 
             masked_imgs.append(np.hstack(parts_to_show))
 
         masked_show = np.vstack(masked_imgs)
         cv2.imshow('Observation V5', masked_show)
-        cv2.waitKey(2000)
+        cv2.waitKey(10)
 
     def training(self, epoch):
         train_loss = 0.0
@@ -1130,7 +987,12 @@ class Trainer(object):
             target = {'label': label, 'instance': instance}
             self.scheduler(self.optimizer, i, epoch, self.best_pred)
             self.optimizer.zero_grad()
-            output_dict = self.model(image, target)
+            try:
+                output_dict = self.model(image, target)
+            except:
+                log_gpu_stat(self.logger)
+                print('Num of instances:', self.model.log_dict['InstPyr_inst_count'])
+                exit()
             loss_dict = output_dict['loss_dict']
             losses = sum(loss for loss in loss_dict.values())
             self.model.log_dict['loss_dict'] = loss_dict
@@ -1165,8 +1027,8 @@ class Trainer(object):
                     #     self.model.log_dict['pyr_num_l1'], self.model.log_dict['pyr_num_l2'], 
                     #     self.model.log_dict['pyr_num_l3'], 
                     # ))
-            if self.cfg.SOLVER.SHOW_IMAGE and i % 2 == 0:
-                self.show_image_l1(image, output_dict, target)
+            if self.cfg.SOLVER.SHOW_IMAGE and i % 50 == 0:
+                self.show_image_v8(image, output_dict, target)
         self.writer.add_scalar('train/loss_epoch', train_loss, epoch)
 
     def validation(self, epoch):
@@ -1244,11 +1106,11 @@ def main():
     args = parser.parse_args()
 
     cfg.merge_from_file(args.config)
-    cfg.merge_from_list(['SOLVER.SHOW_IMAGE', False])
+    # cfg.merge_from_list(['SOLVER.SHOW_IMAGE', False])
     cfg.merge_from_list(['DATALOADER.BATCH_SIZE_TRAIN', 1])
     # cfg.merge_from_list(['DATALOADER.NUM_WORKERS', 0])
-    # cfg.merge_from_list(['SOLVER.SEMATIC_ONLY', True])
-    # cfg.merge_from_list(['MODEL.WEIGHT', 'run/hpc_good/mpc_v3_6/model_Epoch_ 20.pth'])
+    cfg.merge_from_list(['SOLVER.SEMATIC_ONLY', True])
+    # cfg.merge_from_list(['MODEL.WEIGHT', 'Every_5_model_Epoch_0.pth'])
     cfg.merge_from_list(args.opts)
     cfg.freeze()
 
@@ -1277,11 +1139,20 @@ def main():
         trainer.load_weights(cfg.MODEL.WEIGHT)
 
     for epoch in range(trainer.start_epoch, cfg.SOLVER.EPOCHES):
-        try:
-            trainer.training(epoch)
-            trainer.validation(epoch)
-        except:
-            log_gpu_stat(logger)
+        trainer.training(epoch)
+        # trainer.validation(epoch)
+        log_gpu_stat(logger)
+        if epoch % 5 == 0:
+            save_data = {}
+            save_data["epoch"] = epoch + 1
+            save_data["best_pred"] = -1
+            save_data["model"] = trainer.model.state_dict()
+            if trainer.optimizer is not None:
+                save_data["optimizer"] = trainer.optimizer.state_dict()
+            if trainer.scheduler is not None:
+                save_data["scheduler"] = trainer.scheduler.__dict__ 
+            torch.save(save_data, trainer.output_dir+"/Every_5_model_Epoch_{}.pth".format(epoch))
+
 
 
     trainer.writer.close()

@@ -1107,10 +1107,11 @@ class MaskPyramids(nn.Module):
             output_dict['targets'] = targets
             output_dict['ins_pyramids'] =[[]]
             return output_dict
+        
 
         # import pdb; pdb.set_trace()
         instance_categories = [11, 12, 13, 14, 15, 16, 17, 18]
-        lvl_sizes = [tuple(f.shape[-2:]) for f in xs_r50[::-1]]+[(513,513)]
+        lvl_sizes = [tuple(f.shape[-2:]) for f in down_features[::-1]]
 
         # 调换顺序，找最大值处后， 先分配target， target指定了cat
         pyr_id_own_ins_target = [{} for _ in range(N)]
@@ -1561,7 +1562,7 @@ class Trainer(object):
                     #     self.model.log_dict['pyr_num_l1'], self.model.log_dict['pyr_num_l2'], 
                     #     self.model.log_dict['pyr_num_l3'], 
                     # ))
-            if self.cfg.SOLVER.SHOW_IMAGE and i % 50 == 0:
+            if self.cfg.SOLVER.SHOW_IMAGE and i % 20 == 0:
                 self.show_image_v8(image, output_dict, target)
         self.writer.add_scalar('train/loss_epoch', train_loss, epoch)
 
@@ -1584,6 +1585,7 @@ class Trainer(object):
             self.evaluator.add_batch(label.detach().cpu().numpy(), pred)
 
         # Fast test during the training
+        # import pdb; pdb.set_trace()
         Acc = self.evaluator.Pixel_Accuracy()
         Acc_class = self.evaluator.Pixel_Accuracy_Class()
         mIoU = self.evaluator.Mean_Intersection_over_Union()
@@ -1595,7 +1597,7 @@ class Trainer(object):
         self.writer.add_scalar('val/fwIoU', FWIoU, epoch)
 
         self.logger.info('Evalueat report: mIoU: {:3.4}| Acc: {:3.4}| Acc_class: {:3.4}| fwIoU: {:3.4}| previousBest: {:3.4}|'.format(
-            mIoU, Acc, Acc_class, FWIoU, self.best_pred
+            mIoU, Acc, Acc_class, FWIoU, float(self.best_pred)
         ))
         if mIoU > self.best_pred:
             is_best = True
@@ -1644,7 +1646,8 @@ def main():
     cfg.merge_from_list(['DATALOADER.BATCH_SIZE_TRAIN', 1])
     # cfg.merge_from_list(['DATALOADER.NUM_WORKERS', 0])
     cfg.merge_from_list(['SOLVER.SEMATIC_ONLY', True])
-    # cfg.merge_from_list(['MODEL.WEIGHT', 'Every_5_model_Epoch_0.pth'])
+    cfg.merge_from_list(['MULTI_RUN', True])
+    cfg.merge_from_list(['MODEL.WEIGHT', 'run/mpc_v9/Every_5_model_Epoch_130.pth'])
     cfg.merge_from_list(args.opts)
     cfg.freeze()
 
@@ -1674,7 +1677,7 @@ def main():
 
     for epoch in range(trainer.start_epoch, cfg.SOLVER.EPOCHES):
         trainer.training(epoch)
-        # trainer.validation(epoch)
+        trainer.validation(epoch)
         log_gpu_stat(logger)
         if epoch % 5 == 0:
             save_data = {}

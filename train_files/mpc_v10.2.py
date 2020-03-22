@@ -1646,9 +1646,7 @@ def main():
     cfg.merge_from_list(args.opts)
     cfg.freeze()
 
-    extra_exp_name = 'sematic' if cfg.SOLVER.SEMATIC_ONLY else ''
     experiment_name = os.path.basename(__file__).split('.py')[0]
-    experiment_name += '_'+extra_exp_name if extra_exp_name else ''
     if cfg.MULTI_RUN:
         run_names = glob.glob(cfg.OUTPUT_DIR + '/*')
         matched_nums = []

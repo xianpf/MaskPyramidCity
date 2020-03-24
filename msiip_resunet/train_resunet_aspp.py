@@ -4,7 +4,7 @@ import argparse
 import numpy as np
 import os
 import torch
-from mypath import Path
+from msiip_resunet.mypath import Path
 from msiip_resunet.data_loader import make_data_loader
 from msiip_resunet.resunet_aspp import ResUnetAspp
 from msiip_resunet.saver import Saver

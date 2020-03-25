@@ -1,0 +1,29 @@
+DATALOADER:
+  BASE_SIZE: 2048
+  BATCH_SIZE_TEST: 4
+  BATCH_SIZE_TRAIN: 1
+  BATCH_SIZE_VAL: 4
+  CROP_SIZE: 513
+  DATASET: cityscapes
+  # DATASET_PATH: /home/xianr/TurboRuns/cityscapes
+  DATASET_PATH: /home/pxian2/datasets/cityscapes/
+  IGNORE_INDEX: -1
+  NUM_CLASSES: 19
+  NUM_WORKERS: 4
+  PIN_MEMORY: true
+MODEL:
+  DEVICE: cuda
+  RESNETS:
+    STEM_OUT_CHANNELS: 64
+  WEIGHT: ''
+MULTI_RUN: true
+OUTPUT_DIR: run/
+SOLVER:
+  BASE_LR: 0.01
+  EPOCHES: 200
+  MOMENTUM: 0.9
+  NESTEROV: false
+  SCHEDULE_TYPE: poly
+  SEMATIC_ONLY: true
+  SHOW_IMAGE: false
+  WEIGHT_DECAY: 0.0005

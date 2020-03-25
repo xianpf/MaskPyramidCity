@@ -1,7 +1,7 @@
 #!/bin/sh
 
-#SBATCH -o /home/jingxiong9/xpf/MaskPyramidCity/train_files/hpc_train/mpc_v5.out
-#SBATCH --job-name=mpc_xpf
+#SBATCH -o train_files/hpc_train/mpc_v5.out
+#SBATCH --job-name=mpc_v5
 #SBATCH --gres=gpu:1
 
 mpirun python train_files/mpc_v5.py --config train_files/hpc_train/HpcMaskPyramidV5.yml

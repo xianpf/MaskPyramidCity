@@ -27,11 +27,11 @@ def make_data_loader(cfg):
         test_set = CitySegmentation(cfg, split='test', transform=input_transform)
         num_class = cfg.DATALOADER.NUM_CLASSES
         train_loader = DataLoader(train_set, batch_size=cfg.DATALOADER.BATCH_SIZE_TRAIN, shuffle=True, 
-            num_workers=cfg.DATALOADER.NUM_WORKERS, pin_memory=cfg.DATALOADER.PIN_MEMORY)
+            num_workers=cfg.DATALOADER.NUM_WORKERS, pin_memory=cfg.DATALOADER.PIN_MEMORY, drop_last=True)
         val_loader = DataLoader(val_set, batch_size=cfg.DATALOADER.BATCH_SIZE_VAL, shuffle=False, 
-            num_workers=cfg.DATALOADER.NUM_WORKERS, pin_memory=cfg.DATALOADER.PIN_MEMORY)
+            num_workers=cfg.DATALOADER.NUM_WORKERS, pin_memory=cfg.DATALOADER.PIN_MEMORY, drop_last=True)
         test_loader = DataLoader(test_set, batch_size=cfg.DATALOADER.BATCH_SIZE_TEST, shuffle=False, 
-            num_workers=cfg.DATALOADER.NUM_WORKERS, pin_memory=cfg.DATALOADER.PIN_MEMORY)
+            num_workers=cfg.DATALOADER.NUM_WORKERS, pin_memory=cfg.DATALOADER.PIN_MEMORY, drop_last=True)
 
         return train_loader, val_loader, test_loader, num_class
 

@@ -33,5 +33,6 @@ dist/
 /run
 /.vscode
 /archived
-/grow_model
+# /grow_model
 train_files/hpc_train/*.out
+当务之急.md

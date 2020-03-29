@@ -138,6 +138,109 @@ class NormConv2d(torch.nn.Module):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
 
+class ResNormConv2d(torch.nn.Module):
+    '''decouple the direction and length of weight and input x'''
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1,
+                 padding=0, dilation=1, groups=1, bias=False, padding_mode='zeros',
+                stretch=True):
+        super(ResNormConv2d, self).__init__()
+        self.group_conv = torch.nn.Conv2d(in_channels=in_channels, out_channels=in_channels, 
+            kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation, 
+            groups=in_channels, bias=False, padding_mode=padding_mode)
+        self.norm_conv = FixWeightConv2d(in_channels, in_channels, kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation, 
+            groups=in_channels, bias=False, padding_mode=padding_mode)
+        self.norm_conv.weight.data.fill_(1)
+        self.stretch = stretch
+        if stretch:
+            self.out_1x1_conv = torch.nn.Conv2d(in_channels*2, out_channels, 1, bias=bias)
+        self.view_in, self.view_out = (in_channels, kernel_size*kernel_size), (in_channels, 1, 1, 1)
+        
+        # self._init_weight()
+        
+        
+    def forward(self, x):
+        # 已将输入normalized， 其长度未受理
+        if ((self.group_conv.weight.data.view(self.view_in).norm(dim=1) - 1).abs()>1e-4).any():
+            self.group_conv.weight.data = self.group_conv.weight.data / self.group_conv.weight.data.view(
+                self.view_in).norm(dim=1).view(self.view_out)
+        x_group = self.group_conv(x)
+        x_sqr_in = torch.pow(x, 2)
+        x_square = self.norm_conv(x_sqr_in)+1e-8
+        x_norm = x_square.sqrt()
+        x_normalized = x_group / x_norm
+        x_out = x_normalized
+        if  self.stretch:
+            x_interp = x
+            if x.shape != x_out.shape:
+                x_interp = F.interpolate(x, x_out.shape[-2:], mode='bilinear', align_corners=True)
+            x_interp = torch.cat((x_interp, x_out), dim=1)
+            x_stretch = self.out_1x1_conv(x_interp)
+            return x_stretch
+        return x_out
+    
+
+    def _init_weight(self):
+        for m in self.modules():
+            if isinstance(m, torch.nn.Conv2d):
+                torch.nn.init.kaiming_normal_(m.weight)
+            elif isinstance(m, torch.nn.BatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
+
+class MeanResNormConv2d(torch.nn.Module):
+    '''decouple the direction and length of weight and input x'''
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1,
+                 padding=0, dilation=1, groups=1, padding_mode='zeros',
+                stretch=True):
+        super(MeanResNormConv2d, self).__init__()
+        self.group_conv = torch.nn.Conv2d(in_channels=in_channels, out_channels=in_channels, 
+            kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation, 
+            groups=in_channels, bias=False, padding_mode=padding_mode)
+        self.norm_conv = FixWeightConv2d(in_channels, in_channels, kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation, 
+            groups=in_channels, bias=False, padding_mode=padding_mode)
+        self.norm_conv.weight.data.fill_(1)
+        self.stretch = stretch
+        self.in_channels = in_channels
+        if stretch:
+            self.out_1x1_conv = torch.nn.Conv2d(in_channels*2, out_channels, 1, bias=False)
+        self.view_in, self.view_out = (in_channels, kernel_size*kernel_size), (in_channels, 1, 1, 1)
+        
+        # self._init_weight()
+        
+        
+    def forward(self, x):
+        # 已将输入normalized， 其长度未受理
+        if ((self.group_conv.weight.data.view(self.view_in).norm(dim=1) - 1).abs()>1e-4).any():
+            self.group_conv.weight.data = self.group_conv.weight.data / self.group_conv.weight.data.view(
+                self.view_in).norm(dim=1).view(self.view_out)
+        x_group = self.group_conv(x)
+        x_sqr_in = torch.pow(x, 2)
+        x_square = self.norm_conv(x_sqr_in)+1e-8
+        x_norm = x_square.sqrt()
+        x_normalized = x_group / x_norm
+        x_out = x_normalized
+        if  self.stretch:
+            x_interp = x
+            if x.shape != x_out.shape:
+                x_interp = F.interpolate(x, x_out.shape[-2:], mode='bilinear', align_corners=True)
+            x_interp = torch.cat((x_interp, x_out), dim=1)
+            x_stretch = self.out_1x1_conv(x_interp)
+            # import pdb; pdb.set_trace()
+            mean_bias =  x_stretch.mean(dim=(2,3))[...,None, None]
+            x_stretch = x_stretch - mean_bias
+            return x_stretch
+        return x_out
+    
+
+    def _init_weight(self):
+        # for m in self.modules():
+        #     if isinstance(m, torch.nn.Conv2d):
+        #         torch.nn.init.kaiming_normal_(m.weight)
+        #     elif isinstance(m, torch.nn.BatchNorm2d):
+        #         m.weight.data.fill_(1)
+        #         m.bias.data.zero_()
+        import pdb; pdb.set_trace()
+
 class MyConv2d(torch.nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1,
                  padding=0, dilation=1, groups=1,

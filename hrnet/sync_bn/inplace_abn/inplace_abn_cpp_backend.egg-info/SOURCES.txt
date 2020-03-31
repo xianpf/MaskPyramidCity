@@ -1,0 +1,8 @@
+setup.py
+inplace_abn_cpp_backend.egg-info/PKG-INFO
+inplace_abn_cpp_backend.egg-info/SOURCES.txt
+inplace_abn_cpp_backend.egg-info/dependency_links.txt
+inplace_abn_cpp_backend.egg-info/top_level.txt
+src/inplace_abn.cpp
+src/inplace_abn_cpu.cpp
+src/inplace_abn_cuda.cu

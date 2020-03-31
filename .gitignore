@@ -31,6 +31,8 @@ dist/
 /checkpoints
 /demo/results
 /run
+/dataloaders/cityscapes
+/dataloaders/cityscapes_list_path
 /.vscode
 /archived
 # /grow_model

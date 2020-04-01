@@ -7,6 +7,7 @@ from yacs.config import CfgNode as CN
 _C = CN()
 _C.OUTPUT_DIR = "run/"
 _C.MULTI_RUN = False
+_C.TEST_ONLY = False
 
 
 # ---------------------------------------------------------------------------- #
@@ -27,9 +28,19 @@ _C.DATALOADER.IGNORE_INDEX = -1
 
 
 # ---------------------------------------------------------------------------- #
+# Cudnn related params
+# ---------------------------------------------------------------------------- #
+_C.CUDNN = CN()
+_C.CUDNN.BENCHMARK = True
+_C.CUDNN.DETERMINISTIC = False
+_C.CUDNN.ENABLED = True
+
+# ---------------------------------------------------------------------------- #
 # MODEL
 # ---------------------------------------------------------------------------- #
 _C.MODEL = CN()
+_C.MODEL.EXTRA = CN(new_allowed=True)
+_C.MODEL.PRETRAINED = ''
 _C.MODEL.WEIGHT = ""
 _C.MODEL.DEVICE = "cuda"
 

@@ -1142,7 +1142,7 @@ def main():
         trainer.training(epoch)
         # trainer.validation(epoch)
         log_gpu_stat(logger)
-        if epoch % 5 == 0:
+        if epoch == 5 or epoch % 20 == 0:
             save_data = {}
             save_data["epoch"] = epoch + 1
             save_data["best_pred"] = -1
@@ -1159,3 +1159,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# v8: 程序完整 测试不满意，小碎片过多

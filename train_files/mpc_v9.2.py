@@ -1676,7 +1676,7 @@ def main():
         trainer.training(epoch)
         # trainer.validation(epoch)
         log_gpu_stat(logger)
-        if epoch % 5 == 0:
+        if epoch == 5 or epoch % 20 == 0:
             save_data = {}
             save_data["epoch"] = epoch + 1
             save_data["best_pred"] = -1
@@ -1695,6 +1695,7 @@ if __name__ == "__main__":
     main()
 
 
+# v9.2: resnet 换成 Unet.
 # v9: resnet 换成 Unet.
 # V9 的启示： 逐层监督带来更多问题， 而不是更精准了。所以新的方向应该是，统一采用513输出的结果，在遴选的时候，使用513
 # 缩到相应尺寸的解决办法

@@ -24,3 +24,5 @@ setup(
     cmdclass={
         'build_ext': BuildExtension
     })
+
+# CC=g++ python setup.py install

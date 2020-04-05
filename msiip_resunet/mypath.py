@@ -6,7 +6,7 @@ class Path(object):
         elif dataset == 'sbd':
             return '/path/to/datasets/benchmark_RELEASE/'  # folder that contains dataset/.
         elif dataset == 'cityscapes':
-            return '/home/pxian2/datasets/cityscapes/'     # foler that contains leftImg8bit/
+            return '/home/xianr/TurboRuns/cityscapes'     # foler that contains leftImg8bit/
         elif dataset == 'panoptic_cityscapes':
             return '/home/xianr/TurboRuns/cityscapes/newdivide'     # foler that contains leftImg8bit/
         elif dataset == 'coco':

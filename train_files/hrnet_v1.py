@@ -1005,7 +1005,7 @@ def main():
             trainer.training(epoch)
             trainer.validation(epoch)
             log_gpu_stat(logger)
-            if epoch % 5 == 0:
+            if epoch == 5 or epoch % 20 == 0:
                 save_data = {}
                 save_data["epoch"] = epoch + 1
                 save_data["best_pred"] = -1
@@ -1024,6 +1024,7 @@ if __name__ == "__main__":
     main()
 
 
+# hrnet v1 测试hrnet的语意分割表现
 # gm_v4 mean threshed res norm conv
 # v10_5_resunet_v2_sematic_1 层次加深到 feature map size 最小为4 
 # v10.2: imshow 展示pyr num 与实际的instance target

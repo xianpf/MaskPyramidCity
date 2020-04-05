@@ -2152,7 +2152,8 @@ class Trainer(object):
             # import pdb; pdb.set_trace()
             losses.backward()
             self.optimizer.step()
-            if 5 < epoch < 100 and losses < 1e2:
+            # if 5 < epoch < 100 and losses < 1e2:
+            if epoch < 100 and losses < 1e2:
                 self.model.up1.up_focus()
                 self.model.up2.up_focus()
                 self.model.up3.up_focus()
@@ -2275,7 +2276,7 @@ def main():
     cfg.merge_from_list(['SOLVER.SEMATIC_ONLY', True])
     cfg.merge_from_list(['SOLVER.BASE_LR', 1e-7])
     cfg.merge_from_list(['MULTI_RUN', True])
-    # cfg.merge_from_list(['MODEL.WEIGHT', 'run/gm_v4_sematic_4/Every_5_model_Epoch_5.pth'])
+    cfg.merge_from_list(['MODEL.WEIGHT', 'run/gm_v4_sematic_21/Every_5_model_Epoch_5.pth'])
     cfg.merge_from_list(args.opts)
     cfg.freeze()
 
@@ -2309,7 +2310,7 @@ def main():
         trainer.training(epoch)
         trainer.validation(epoch)
         log_gpu_stat(logger)
-        if epoch % 5 == 0:
+        if epoch == 5 or epoch % 20 == 0:
             save_data = {}
             save_data["epoch"] = epoch + 1
             save_data["best_pred"] = -1
@@ -2328,7 +2329,7 @@ if __name__ == "__main__":
     main()
 
 
-# gm_v2 batchNorm --> bias only
+# gm_v4 mean threshed res norm conv
 # v10_5_resunet_v2_sematic_1 层次加深到 feature map size 最小为4 
 # v10.2: imshow 展示pyr num 与实际的instance target
 # v10: Unet 下，不再多层输出，仅使用最终mask 通过放缩来匹配筛选各级mask

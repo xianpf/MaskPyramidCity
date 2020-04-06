@@ -282,10 +282,11 @@ class MaskPyramids(nn.Module):
                 cv2.putText(res_img,'#:{}'.format(len(pyramids[bid])),(30,30),cv2.FONT_HERSHEY_COMPLEX,1,(1,0,0),1)
                 for pyr in pyramids[bid]:
                     # import pdb; pdb.set_trace()
-                    mask_513 = pyr.get_mask(513)[0,0]
-                    accurate_pos_513 = tuple(torch.nonzero(mask_513 == mask_513.max())[0].tolist())
-                    # pyr_pos_513 = pyr.get_rel_pos(8)[::-1]
-                    cv2.circle(res_img, accurate_pos_513, 5, (1,0,0), -1)
+                    # mask_513 = pyr.get_mask(513)[0,0]
+                    # accurate_pos_513 = tuple(torch.nonzero(mask_513 == mask_513.max())[0].tolist())
+                    pyr_pos_513 = pyr.get_rel_pos(8)[::-1]
+                    # cv2.circle(res_img, accurate_pos_513, 5, (1,0,0), -1)
+                    cv2.circle(res_img, pyr_pos_513, 5, (1,0,0), -1)
                 per_bid_show_img.append(res_img)
 
             # if s_run_mask:
@@ -429,8 +430,8 @@ class MaskPyramids(nn.Module):
                     pos_list = torch.nonzero(running_mask)
                     for pos_t in pos_list:
                         pos = tuple(pos_t.tolist())
-                        new_pos = tuple(torch.nonzero(max_value == max_value[running_mask].max())[0].tolist())
-                        new_pyr = InstancePyramid(new_pos, sem_lvl, lvl_sizes, tar_cat=int(max_idx[new_pos]))
+                        # new_pos = tuple(torch.nonzero(max_value == max_value[running_mask].max())[0].tolist())
+                        new_pyr = InstancePyramid(pos, sem_lvl, lvl_sizes, tar_cat=int(max_idx[pos]))
                         ins_pyramids[bid].append(new_pyr)
                         self.compute_mask(sem_lvl, bid, down_features, [new_pyr])
 

@@ -41,11 +41,26 @@ _C.CUDNN.ENABLED = True
 _C.MODEL = CN()
 _C.MODEL.EXTRA = CN(new_allowed=True)
 _C.MODEL.PRETRAINED = ''
+_C.MODEL.ALIGN_CORNERS = True
 _C.MODEL.WEIGHT = ""
 _C.MODEL.DEVICE = "cuda"
 
 _C.MODEL.RESNETS = CN()
 _C.MODEL.RESNETS.STEM_OUT_CHANNELS = 64
+
+_C.MODEL.OCR = CN()
+_C.MODEL.OCR.MID_CHANNELS = 512
+_C.MODEL.OCR.KEY_CHANNELS = 256
+_C.MODEL.OCR.DROPOUT = 0.05
+_C.MODEL.OCR.SCALE = 1
+
+_C.LOSS = CN()
+_C.LOSS.USE_OHEM = False
+_C.LOSS.OHEMTHRES = 0.9
+_C.LOSS.OHEMKEEP = 100000
+_C.LOSS.CLASS_BALANCE = False
+_C.LOSS.BALANCE_WEIGHTS = [1]
+
 
 # ---------------------------------------------------------------------------- #
 # Solver

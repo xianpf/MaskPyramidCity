@@ -38,3 +38,4 @@ dist/
 # /grow_model
 train_files/hpc_train/*.out
 当务之急.md
+/maskpyramid/backbone/unet_baseline/*.pth.tar

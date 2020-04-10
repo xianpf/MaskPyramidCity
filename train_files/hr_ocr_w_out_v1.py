@@ -895,8 +895,13 @@ class Trainer(object):
         # self.model = MaskPyramids(cfg)
         self.model = HighResolutionNet(cfg)
         self.model.init_weights(cfg.MODEL.PRETRAINED)
-        self.device = torch.device(cfg.MODEL.DEVICE)
+        # import pdb; pdb.set_trace()
+        self.device = torch.device("cuda")
         self.model.to(self.device)
+        torch.distributed.init_process_group(backend='nccl', init_method='tcp://127.0.0.1:12345', world_size=1, rank=0)
+        # self.model = nn.parallel.DistributedDataParallel(self.model, device_ids=[0, 1], output_device=0)
+        self.model = nn.parallel.DistributedDataParallel(self.model, output_device=0)
+        # self.device = torch.device(cfg.MODEL.DEVICE)
         self.train_loader, self.val_loader, self.test_loader, self.nclass = make_data_loader(cfg)
 
         train_params = [{'params': self.model.parameters(), 'lr': cfg.SOLVER.BASE_LR}]
@@ -1110,6 +1115,7 @@ class Trainer(object):
             target = {'label': label, 'instance': instance}
             self.scheduler(self.optimizer, i, epoch, self.best_pred)
             self.optimizer.zero_grad()
+            import pdb; pdb.set_trace()
             output_dict = self.model(image, target)
             # try:
             #     output_dict = self.model(image, target)

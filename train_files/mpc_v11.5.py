@@ -396,7 +396,7 @@ class MaskPyramids(nn.Module):
                         continue
                     ins_pyramids[bid].append(new_pyr)
                     scratch_sematic_129 = scratch_sematic_129 * (1-new_pyr_over_mask.float())
-                if targets:
+                if targets and self.training:
                     for ins_tar_id in inst_target.unique():
                         target_cat = sematic_target[inst_target == ins_tar_id].unique().item()
                         if ins_target_catch_pyr_id[ins_tar_id] >= 0 or   \

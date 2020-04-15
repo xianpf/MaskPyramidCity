@@ -6,7 +6,7 @@ import numpy as np
 import pynvml, subprocess
 import matplotlib.pyplot as plt
 import matplotlib
-matplotlib.use('TkAgg')
+# matplotlib.use('TkAgg')
 import torch
 from torch import nn
 import torch.nn.functional as F

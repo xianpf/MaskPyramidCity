@@ -1276,7 +1276,8 @@ class Trainer(object):
                 save_data["optimizer"] = self.optimizer.state_dict()
             if self.scheduler is not None:
                 save_data["scheduler"] = self.scheduler.__dict__ 
-            torch.save(save_data, self.output_dir+"/model_Epoch_{}.pth".format(epoch))
+            # torch.save(save_data, self.output_dir+"/model_Epoch_{}.pth".format(epoch))
+            torch.save(save_data, self.output_dir+"/model_sofarBest.pth")
 
 def log_gpu_stat(logger):
     pynvml.nvmlInit()
@@ -1364,6 +1365,7 @@ if __name__ == "__main__":
     main()
 
 
+# v12 继承自11.9，数字标注ins_target的监督pair
 # v11.9 继承自11.8，退化一下，让train的ap上来;ins_tar不对，sematic要全覆盖
 # v11.8 继承自11.6, 11.7，成功实现了instance ap 精度报告
 # v11.7 继承自11.4，漏掉的ins不应生成，而是直接赋值为sematic11类的最大值+1e-6
